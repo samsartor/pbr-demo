@@ -1,0 +1,12 @@
+[package]
+name = "common"
+version = "0.1.0"
+authors = ["Sam Sartor <me@samsartor.com>", "Daichi Jameson <djameson@mines.edu>"]
+
+[dependencies]
+num-traits = "~0.1"
+serde = "~0.9"
+serde_derive = "~0.9"
+serde_json = "~0.9"
+nalgebra = "~0.11"
+image = "~0.12"

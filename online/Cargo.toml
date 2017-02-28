@@ -1,0 +1,9 @@
+[package]
+name = "online"
+version = "0.1.0"
+authors = ["Sam Sartor <me@samsartor.com>", "Daichi Jameson <djameson@mines.edu>"]
+
+[dependencies]
+common = { path = "../common" }
+glium = "~0.16"
+clap = "~2.20"
