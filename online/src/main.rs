@@ -12,6 +12,7 @@ extern crate nalgebra; // Math library, like glm
 mod shaders;
 mod camera;
 mod project;
+mod wavefront;
 
 // use safe GLFW wrapper stuff
 use glium::glutin::{self, Event, WindowBuilder, GlProfile, GlRequest};
@@ -24,7 +25,7 @@ fn main() {
      // create OpenGL context
     let display = WindowBuilder::new()
         .with_dimensions(512, 512)
-        .with_title(format!("An OpenGL 4.1 Core Profile Context"))
+        .with_title(format!("Sideline"))
         .with_gl_profile(GlProfile::Core) // core profile
         .with_gl(GlRequest::Specific(glutin::Api::OpenGl, (4, 1))) // as new as possible
         .with_depth_buffer(24)

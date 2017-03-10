@@ -65,7 +65,7 @@ pub fn new_perspective(eye: Point3<f32>, target: Point3<f32>, up: Vector3<f32>,
         target: target,
         up: up,
         projection: PerspectiveMatrix3::new(
-            aspect, fovy, near, far
+            aspect, fovy / 180. * ::std::f32::consts::PI, near, far
         ),
     }
 }

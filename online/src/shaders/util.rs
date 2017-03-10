@@ -42,6 +42,14 @@ impl BuildShader {
         build
     }
 
+    pub fn raw(source: &str) -> BuildShader {
+        BuildShader {
+            prefix: String::new(),
+            source: String::from(source),
+            name: None
+        }
+    }
+
     pub fn define(mut self, name: &str) -> BuildShader {
     self.prefix += &format!("#define {}\n", name);
         self

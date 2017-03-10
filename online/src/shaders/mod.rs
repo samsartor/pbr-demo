@@ -26,7 +26,7 @@ shader!(wire_phong {
     geometry_shader: file("shaders/wire.g.glsl")
         .define_to("I_POS", "v_pos")
         .define_to("I_NORM", "v_norm"),
-    fragment_shader: file("shaders/wire_phong.f.glsl")
+    fragment_shader: file("shaders/phong.f.glsl")
         .define_to("LIGHT_COUNT", LIGHT_COUNT)
         .define("WIRE")
         .define_to("I_POS", "g_pos")

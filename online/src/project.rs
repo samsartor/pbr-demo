@@ -1,10 +1,17 @@
 use glium::glutin::{Event, MouseButton, VirtualKeyCode, MouseScrollDelta, ElementState};
-use glium::{Surface, DrawParameters};
+use glium::{Program, VertexBuffer, IndexBuffer, Surface, DrawParameters};
+use glium::index::PrimitiveType;
 use glium::backend::glutin_backend::GlutinFacade;
 use glium;
 
+use nalgebra::{Point3, Vector3};
+
 use std::time::{Instant, Duration};
 use std::collections::HashMap;
+
+use wavefront;
+use shaders::{self, PhongUniforms, PhongLight};
+use camera::{Camera, new_perspective};
 
 pub struct Project<'a> {
     // reference back to the gl context
@@ -19,12 +26,17 @@ pub struct Project<'a> {
     mouse_pos: Option<(f32, f32)>,
     // are keys down
     keys: HashMap<VirtualKeyCode, bool>,
-    // are mouse buttons down
-    mouse: HashMap<MouseButton, bool>,
+    // are mouse buttons down, and at what position where they first clicked?
+    mouse: HashMap<MouseButton, Option<(f32, f32)>>,
+    // teapot mesh
+    teapot_mesh: (VertexBuffer<wavefront::Vn>, IndexBuffer<u32>),
+    phong: Program,
 }
 
 impl<'a> Project<'a> {
     pub fn new(display: &'a GlutinFacade, start_size: (u32, u32)) -> Project<'a> {
+        let teapot = wavefront::load_from_path("teapot.obj").unwrap();
+
         Project { 
             display: display,
             start: Instant::now(),
@@ -33,6 +45,8 @@ impl<'a> Project<'a> {
             mouse_pos: None,
             keys: HashMap::new(),
             mouse: HashMap::new(),
+            teapot_mesh: (teapot.vertex_buffer(display).unwrap(), teapot.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
+            phong: shaders::wire_phong(display).unwrap(),
         }
     }
 
@@ -70,8 +84,8 @@ impl<'a> Project<'a> {
                 use self::ElementState::*;
 
                 match state {
-                    Pressed => self.mouse.insert(butt, true),
-                    Released => self.mouse.insert(butt, false),
+                    Pressed => self.mouse.insert(butt, self.mouse_pos),
+                    Released => self.mouse.insert(butt, None),
                 };
 
                 // TODO
@@ -88,7 +102,14 @@ impl<'a> Project<'a> {
     }
 
     pub fn mouse_down(&self, butt: MouseButton) -> bool {
-        self.mouse.get(&butt).cloned().unwrap_or(false)
+        self.mouse.get(&butt).cloned().unwrap_or(None).is_some()
+    }
+
+    pub fn mouse_drag(&self, butt: MouseButton) -> Option<(f32, f32)> {
+        match (self.mouse.get(&butt).cloned().unwrap_or(None), self.mouse_pos) {
+            (Some((x0, y0)), Some((x1, y1))) => Some((x1 - x0, y1 - y0)),
+            _ => None,
+        }
     }
 
     fn update_draw_timer(&mut self) -> (f64, f64) {
@@ -115,11 +136,42 @@ impl<'a> Project<'a> {
             .. Default::default()
         };
 
+        let camera = new_perspective(
+            Point3::new(3., 3., 3.), 
+            Point3::new(0., 0.4, 0.),
+            Vector3::new(0., 1., 0.),
+            self.screen_size.0 as f32 / self.screen_size.1 as f32,
+            25., 0.1, 1000.);
+
+        let lights = [
+            PhongLight {
+                pos: Point3::new(4. * (elapsed * 1.6).sin() as f32, 2., 4. * (elapsed * 1.6).cos() as f32),
+                color: [20., 5., 5.],
+            },
+            PhongLight {
+                pos: Point3::new(0., 6., 0.),
+                color: [10., 10., 15.],
+            }
+        ];
+
+
         //=================//
         //                 //
         // TODO Draw stuff //
         //                 //
         //=================//
+
+        draw.draw(&self.teapot_mesh.0, &self.teapot_mesh.1, &self.phong, &PhongUniforms {
+            view: camera.get_view(),
+            proj: camera.get_proj(),
+            ambient: [0.1; 3],
+            line_width: 1.,
+            material_spec: [0.4; 3],
+            material_diff: [0.8, 0.8, 0.8],
+            material_hard: 15.,
+            lights: lights,
+            ..Default::default()
+        }, &params).unwrap();
     }   
 }
 
