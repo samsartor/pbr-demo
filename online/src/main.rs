@@ -53,10 +53,15 @@ fn main() {
 }
 
 fn main_loop(project: &mut Project, display: &GlutinFacade) {
+    let fbo_store = project.get_store();
+    let mut fbo = fbo_store.init_fbo(display);
+
     loop {
         // get nice OpenGL-encapsulation-state-management-object-thing
+        project.draw(&mut fbo); // DRAW!!!
+
         let mut target = display.draw();
-        project.draw(&mut target); // DRAW!!!
+        project.post(&mut target);
         target.finish().unwrap(); // cleanup, check for errors
 
         // do display events

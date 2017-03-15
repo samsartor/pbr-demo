@@ -1,5 +1,7 @@
 use glium::glutin::{Event, MouseButton, VirtualKeyCode, MouseScrollDelta, ElementState};
 use glium::{Program, VertexBuffer, IndexBuffer, Surface, DrawParameters};
+use glium::framebuffer::{DepthRenderBuffer, MultiOutputFrameBuffer};
+use glium::texture::{DepthFormat, UncompressedFloatFormat, MipmapsOption, Texture2d};
 use glium::index::PrimitiveType;
 use glium::backend::glutin_backend::GlutinFacade;
 use glium;
@@ -8,10 +10,27 @@ use nalgebra::{Point3, Vector3};
 
 use std::time::{Instant, Duration};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use wavefront;
 use shaders::{self, PhongUniforms, PhongLight};
 use camera::{Camera, new_perspective};
+
+pub struct FboStore {
+    depth: Rc<DepthRenderBuffer>,
+    layera: Rc<Texture2d>,
+    layerb: Rc<Texture2d>,
+}
+
+impl FboStore {
+    pub fn init_fbo<'a>(&'a self, display: &GlutinFacade) -> MultiOutputFrameBuffer<'a> {
+        MultiOutputFrameBuffer::with_depth_buffer(
+            display, 
+            vec![("layera", &*self.layera), ("layerb", &*self.layerb)], 
+            &*self.depth
+        ).unwrap()
+    }
+}
 
 pub struct Project<'a> {
     // reference back to the gl context
@@ -31,11 +50,29 @@ pub struct Project<'a> {
     // teapot mesh
     teapot_mesh: (VertexBuffer<wavefront::Vn>, IndexBuffer<u32>),
     phong: Program,
+    // deferred data
+    depth: Rc<DepthRenderBuffer>,
+    layera: Rc<Texture2d>,
+    layerb: Rc<Texture2d>,
 }
 
 impl<'a> Project<'a> {
     pub fn new(display: &'a GlutinFacade, start_size: (u32, u32)) -> Project<'a> {
         let teapot = wavefront::load_from_path("teapot.obj").unwrap();
+
+        let layera = Texture2d::empty_with_format(
+            display, 
+            UncompressedFloatFormat::F32F32F32F32,
+            MipmapsOption::NoMipmap,
+            start_size.0, start_size.1).unwrap();
+
+        let layerb = Texture2d::empty_with_format(
+            display, 
+            UncompressedFloatFormat::F32F32F32F32,
+            MipmapsOption::NoMipmap,
+            start_size.0, start_size.1).unwrap();
+
+        let depth = DepthRenderBuffer::new(display, DepthFormat::I24, start_size.0, start_size.1).unwrap();
 
         Project { 
             display: display,
@@ -47,6 +84,17 @@ impl<'a> Project<'a> {
             mouse: HashMap::new(),
             teapot_mesh: (teapot.vertex_buffer(display).unwrap(), teapot.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
             phong: shaders::wire_phong(display).unwrap(),
+            depth: Rc::new(depth),
+            layera: Rc::new(layera),
+            layerb: Rc::new(layerb),
+        }
+    }
+
+    pub fn get_store(&self) -> FboStore {
+        FboStore {
+            depth: self.depth.clone(),
+            layera: self.layera.clone(),
+            layerb: self.layerb.clone(),
         }
     }
 
@@ -122,6 +170,10 @@ impl<'a> Project<'a> {
         (duration_to_secs(&elapsed), duration_to_secs(&delta))
     }
 
+    pub fn post<S: Surface>(&mut self, draw: &mut S) {
+
+    }
+
     pub fn draw<S: Surface>(&mut self, draw: &mut S) {
         let (elapsed, delta) = self.update_draw_timer();
 
@@ -170,6 +222,7 @@ impl<'a> Project<'a> {
             material_diff: [0.8, 0.8, 0.8],
             material_hard: 15.,
             lights: lights,
+            show_wireframe: false,
             ..Default::default()
         }, &params).unwrap();
     }   
