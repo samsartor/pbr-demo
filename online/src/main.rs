@@ -1,6 +1,6 @@
-#![feature(type_ascription)]
-#![feature(box_syntax, box_patterns)]
-#![feature(log_syntax, trace_macros)]
+//#![feature(type_ascription)]
+//#![feature(box_syntax, box_patterns)]
+//#![feature(log_syntax, trace_macros)]
 #![allow(dead_code)]
 
 #[macro_use]
@@ -21,10 +21,12 @@ use glium::backend::glutin_backend::GlutinFacade;
 
 use project::Project;
 
+const WINDOW_SIZE: (u32, u32) = (1920, 1080);
+
 fn main() {
      // create OpenGL context
     let display = WindowBuilder::new()
-        .with_dimensions(512, 512)
+        .with_dimensions(WINDOW_SIZE.0, WINDOW_SIZE.1)
         .with_title(format!("Sideline"))
         .with_gl_profile(GlProfile::Core) // core profile
         .with_gl(GlRequest::Specific(glutin::Api::OpenGl, (4, 1))) // as new as possible
@@ -48,7 +50,7 @@ fn main() {
         _ => panic!("OpenGL 4.1, OpenGL ES, or better is required, exiting"),
     }
 
-    let mut project = Project::new(&display, (512, 512));
+    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1));
     main_loop(&mut project, &display);
 }
 

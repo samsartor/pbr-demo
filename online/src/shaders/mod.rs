@@ -26,6 +26,16 @@ shader!(gbuff_view {
     fragment_shader: file("shaders/gbuff_view.f.glsl")
 });
 
+shader!(pbr {
+    vertex_shader: file("shaders/blit.v.glsl"),
+    fragment_shader: file("shaders/pbr.f.glsl")
+});
+
+shader!(phong {
+    vertex_shader: file("shaders/blit.v.glsl"),
+    fragment_shader: file("shaders/gbuff_view.f.glsl")
+});
+
 #[derive(Debug, Clone, Copy)]
 pub struct PointLight {
     pub pos: Point3<f32>,
