@@ -15,6 +15,11 @@ in vec3 a_nor;
 out vec3 v_norm;
 #endif
 
+#ifdef TEX
+in vec2 a_tex;
+out vec2 v_tex;
+#endif
+
 void main() {
     vec4 p = model * vec4(a_pos, 1);
     v_pos = p.xyz;
@@ -22,6 +27,10 @@ void main() {
     #ifdef NORM
     vec4 n = normalize(model * vec4(a_nor, 0));
     v_norm = n.xyz;
+    #endif
+
+    #ifdef TEX
+    v_tex = a_tex;
     #endif
 
     #ifdef VIEWPROJ

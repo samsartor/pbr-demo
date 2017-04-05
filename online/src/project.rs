@@ -13,8 +13,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use wavefront;
-use shaders::{self, PhongUniforms, PhongLight};
+use shaders::{self, GbugffUniforms};
 use camera::{Camera, new_perspective};
+
+const PI: f32 = ::std::f32::consts::PI;
+const HPI: f32 = 0.5 *  PI;
 
 pub struct FboStore {
     depth: Rc<DepthRenderBuffer>,
@@ -48,17 +51,23 @@ pub struct Project<'a> {
     // are mouse buttons down, and at what position where they first clicked?
     mouse: HashMap<MouseButton, Option<(f32, f32)>>,
     // teapot mesh
-    teapot_mesh: (VertexBuffer<wavefront::Vn>, IndexBuffer<u32>),
-    phong: Program,
+    mesh: (VertexBuffer<wavefront::Vtn>, IndexBuffer<u32>),
+    // full screen quad
+    fsquad: (VertexBuffer<wavefront::V>, IndexBuffer<u8>),
+    // shaders
+    gbuff: Program, // store deferred gbuff data
+    gbuff_view: Program,
     // deferred data
     depth: Rc<DepthRenderBuffer>,
     layera: Rc<Texture2d>,
     layerb: Rc<Texture2d>,
+    // arcball theta, phi, radius
+    arcball: (f32, f32, f32),
 }
 
 impl<'a> Project<'a> {
     pub fn new(display: &'a GlutinFacade, start_size: (u32, u32)) -> Project<'a> {
-        let teapot = wavefront::load_from_path("teapot.obj").unwrap();
+        let sphere = wavefront::load_from_path("sphere.obj").unwrap();
 
         let layera = Texture2d::empty_with_format(
             display, 
@@ -74,6 +83,16 @@ impl<'a> Project<'a> {
 
         let depth = DepthRenderBuffer::new(display, DepthFormat::I24, start_size.0, start_size.1).unwrap();
 
+        let fsquad = (
+            VertexBuffer::immutable(display, &[
+                wavefront::V { a_pos: [ -1., -1., 0. ] },
+                wavefront::V { a_pos: [ -1.,  1., 0. ] },
+                wavefront::V { a_pos: [  1., -1., 0. ] },
+                wavefront::V { a_pos: [  1.,  1., 0. ] },
+            ]).unwrap(), 
+            IndexBuffer::immutable(display, PrimitiveType::TrianglesList, &[0, 1, 2, 2, 1, 3]).unwrap()
+        );
+
         Project { 
             display: display,
             start: Instant::now(),
@@ -82,11 +101,14 @@ impl<'a> Project<'a> {
             mouse_pos: None,
             keys: HashMap::new(),
             mouse: HashMap::new(),
-            teapot_mesh: (teapot.vertex_buffer(display).unwrap(), teapot.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
-            phong: shaders::wire_phong(display).unwrap(),
+            mesh: (sphere.vertex_buffer(display).unwrap(), sphere.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
+            fsquad: fsquad,
+            gbuff: shaders::gbuff(display).expect("gbuff program error"),
+            gbuff_view: shaders::gbuff_view(display).expect("gbuff_view program error"),
             depth: Rc::new(depth),
             layera: Rc::new(layera),
             layerb: Rc::new(layerb),
+            arcball: (0., 0., 10.),
         }
     }
 
@@ -139,7 +161,7 @@ impl<'a> Project<'a> {
                 // TODO
             }
             MouseWheel(MouseScrollDelta::LineDelta(_, y), _) => {
-                // TODO
+                self.arcball.2 *= 1.05f32.powf(y);
             },
             _ => (),
         }
@@ -154,8 +176,20 @@ impl<'a> Project<'a> {
     }
 
     pub fn mouse_drag(&self, butt: MouseButton) -> Option<(f32, f32)> {
-        match (self.mouse.get(&butt).cloned().unwrap_or(None), self.mouse_pos) {
-            (Some((x0, y0)), Some((x1, y1))) => Some((x1 - x0, y1 - y0)),
+        match (self.mouse.get(&butt), self.mouse_pos) {
+            (Some(&Some((x0, y0))), Some((x1, y1))) => Some((x1 - x0, y1 - y0)),
+            _ => None,
+        }
+    }
+
+    pub fn reset_mouse_drag(&mut self, butt: MouseButton) -> Option<(f32, f32)> {
+        match (self.mouse.get_mut(&butt), self.mouse_pos) {
+            (Some(&mut Some((ref mut x0, ref mut y0))), Some((x1, y1))) => {
+                let out = Some((x1 - *x0, y1 - *y0));
+                *x0 = x1;
+                *y0 = y1;
+                out
+            },
             _ => None,
         }
     }
@@ -171,13 +205,36 @@ impl<'a> Project<'a> {
     }
 
     pub fn post<S: Surface>(&mut self, draw: &mut S) {
-
+        draw.draw(&self.fsquad.0, &self.fsquad.1, &self.gbuff_view, &uniform!(
+            layera: self.layera.as_ref(),
+            layerb: self.layerb.as_ref(),
+            pos_range: (0.0f32, 0.333f32),
+            tex_range: (0.333f32, 0.666f32),
+            norm_range: (0.666f32, 1.0f32),
+        ), &Default::default()).unwrap();
     }
 
     pub fn draw<S: Surface>(&mut self, draw: &mut S) {
         let (elapsed, delta) = self.update_draw_timer();
 
-        draw.clear_color_and_depth((0.01, 0.01, 0.02, 1.0), 1.0);
+        if let Some((dx, dy)) = self.reset_mouse_drag(MouseButton::Left) {
+            self.arcball.0 += dx * 1.2;
+            self.arcball.1 += dy * 1.2;
+
+            if self.arcball.1 < -HPI + 0.01 { self.arcball.1 = -HPI + 0.01; }
+            if self.arcball.1 >  HPI - 0.01 { self.arcball.1 =  HPI - 0.01; }
+        }
+
+        draw.clear_depth(1.0);
+        draw.clear_color(0.0, 0.0, 0.0, 0.0);
+
+        let arcpos = {
+            let cosphi = self.arcball.1.cos();
+            let x = self.arcball.0.cos() * cosphi * self.arcball.2;
+            let z = self.arcball.0.sin() * cosphi * self.arcball.2;
+            let y = self.arcball.1.sin() * self.arcball.2;
+            Point3::new(x, y, z)
+        };
 
         let params = DrawParameters {
             depth: glium::Depth {
@@ -189,22 +246,11 @@ impl<'a> Project<'a> {
         };
 
         let camera = new_perspective(
-            Point3::new(3., 3., 3.), 
-            Point3::new(0., 0.4, 0.),
+            arcpos, 
+            Point3::new(0., 0., 0.),
             Vector3::new(0., 1., 0.),
             self.screen_size.0 as f32 / self.screen_size.1 as f32,
             25., 0.1, 1000.);
-
-        let lights = [
-            PhongLight {
-                pos: Point3::new(4. * (elapsed * 1.6).sin() as f32, 2., 4. * (elapsed * 1.6).cos() as f32),
-                color: [20., 5., 5.],
-            },
-            PhongLight {
-                pos: Point3::new(0., 6., 0.),
-                color: [10., 10., 15.],
-            }
-        ];
 
 
         //=================//
@@ -213,16 +259,9 @@ impl<'a> Project<'a> {
         //                 //
         //=================//
 
-        draw.draw(&self.teapot_mesh.0, &self.teapot_mesh.1, &self.phong, &PhongUniforms {
+        draw.draw(&self.mesh.0, &self.mesh.1, &self.gbuff, &GbugffUniforms {
             view: camera.get_view(),
             proj: camera.get_proj(),
-            ambient: [0.1; 3],
-            line_width: 1.,
-            material_spec: [0.4; 3],
-            material_diff: [0.8, 0.8, 0.8],
-            material_hard: 15.,
-            lights: lights,
-            show_wireframe: false,
             ..Default::default()
         }, &params).unwrap();
     }   

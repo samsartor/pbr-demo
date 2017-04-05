@@ -61,11 +61,11 @@ impl BuildShader {
         self
     }
 
-    pub fn vals<'a, M>(mut self, vals: M) -> BuildShader
-    where M: IntoIterator<Item = &'a (&'static str, Option<String>)> {
+    pub fn vals<'a, M, S>(mut self, vals: M) -> BuildShader
+    where M: IntoIterator<Item = &'a (&'static str, Option<S>)>, S: ::std::borrow::Borrow<str> + 'a {
         for &(ref n, ref v) in vals {
             self = match *v {
-                Some(ref v) => self.define_to(n, v),
+                Some(ref v) => self.define_to(n, v.borrow()),
                 None => self.define(n),
             };
         }
