@@ -13,6 +13,7 @@ in vec2 v_pos;
 layout(location = 0) out vec4 f_color;
 
 const float PI = 3.14159265359;
+const int LIGHT_COUNT = 5;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
@@ -86,31 +87,34 @@ void main() {
 
     // PER LIGHT
 
-    vec3 light_pos = vec3(5, 5, 5);
-    vec3 light_color = vec3(64, 52, 32);
+    for (int light_i = 0; light_i < LIGHT_COUNT; light_i++) {
+        float light_angle = PI * light_i * 2.0 / LIGHT_COUNT;
+        vec3 light_pos = vec3(5 * sin(light_angle), 4, 5 * cos(light_angle));
+        vec3 light_color = vec3(48, 40, 24);
 
-    vec3 L = normalize(light_pos - pos);
-    vec3 H = normalize(V + L);
-    float distance    = length(light_pos - pos);
-    float attenuation = 1.0 / (distance * distance);
-    vec3 radiance     = light_color * attenuation;        
-    
-    // cook-torrance brdf
-    float NDF = DistributionGGX(N, H, roughness);        
-    float G   = GeometrySmith(N, V, L, roughness);      
-    vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
-    
-    vec3 kS = F;
-    vec3 kD = vec3(1.0) - kS;
-    kD *= 1.0 - metalness;     
-    
-    vec3 nominator    = NDF * G * F;
-    float denominator = 4 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
-    vec3 brdf = nominator / denominator;
+        vec3 L = normalize(light_pos - pos);
+        vec3 H = normalize(V + L);
+        float distance    = length(light_pos - pos);
+        float attenuation = 1.0 / (distance * distance);
+        vec3 radiance     = light_color * attenuation;        
         
-    // add to outgoing radiance Lo
-    float NdotL = max(dot(N, L), 0.0);                
-    lum += (kD * albedo / PI + brdf) * radiance * NdotL; 
+        // cook-torrance brdf
+        float NDF = DistributionGGX(N, H, roughness);        
+        float G   = GeometrySmith(N, V, L, roughness);      
+        vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
+        
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metalness;     
+        
+        vec3 nominator    = NDF * G * F;
+        float denominator = 4 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+        vec3 brdf = nominator / denominator;
+            
+        // add to outgoing radiance Lo
+        float NdotL = max(dot(N, L), 0.0);                
+        lum += (kD * albedo / PI + brdf) * radiance * NdotL; 
+    }
 
     // AMBIENT
     lum += vec3(0.015, 0.015, 0.02) * albedo; // * ao;
