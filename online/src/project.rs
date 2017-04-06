@@ -12,8 +12,11 @@ use std::time::{Instant, Duration};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::clone::Clone;
+use std::fs::File;
+use std::io::BufReader;
 
 use wavefront;
+use image;
 use shaders::{self, GbugffUniforms};
 use camera::{Camera, BasicPerspCamera, new_perspective};
 
@@ -54,6 +57,20 @@ impl FboStore {
     }
 }
 
+fn load_image_rgb<'a>(display: &'a GlutinFacade, path: &str) -> Texture2d {
+    let image = image::load(BufReader::new(File::open(path).expect("Image \"{}\" not found")), image::PNG).unwrap().to_rgb();
+    let image_dimensions = image.dimensions();
+    let image = glium::texture::RawImage2d::from_raw_rgb_reversed(image.into_raw(), image_dimensions);
+    glium::texture::Texture2d::new(display, image).unwrap()
+}
+
+pub struct PbrTextures<T> {
+    albedo: T,
+    metalness: T,
+    roughness: T,
+    normal: T,
+}
+
 pub struct Project<'a> {
     // reference back to the gl context
     display: &'a GlutinFacade,
@@ -78,7 +95,9 @@ pub struct Project<'a> {
     gbuff_view: Program,
     pbr: Program,
     phong: Program,
-
+    // pbr textures
+    pbrtex: PbrTextures<Texture2d>,
+    // shader mode
     shade_mode: ViewMode,
     // deferred data
     depth: Rc<DepthRenderBuffer>,
@@ -136,6 +155,12 @@ impl<'a> Project<'a> {
             depth: Rc::new(depth),
             layera: Rc::new(layera),
             layerb: Rc::new(layerb),
+            pbrtex: PbrTextures {
+                albedo: load_image_rgb(display, "textures/albedo.png"),
+                metalness: load_image_rgb(display, "textures/metalness.png"),
+                roughness: load_image_rgb(display, "textures/roughness.png"),
+                normal: load_image_rgb(display, "textures/normal.png"),
+            },
             arcball: (0., 0., 10.),
             camera: None,
         }
@@ -270,6 +295,10 @@ impl<'a> Project<'a> {
                 layera: self.layera.as_ref(),
                 layerb: self.layerb.as_ref(),
                 camera_pos: *camera.eye.as_ref(),
+                albedo_tex: &self.pbrtex.albedo,
+                roughness_tex: &self.pbrtex.roughness,
+                metalness_tex: &self.pbrtex.metalness,
+                normal_tex: &self.pbrtex.normal,
             ), &Default::default()).unwrap(),
             PHONG => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.phong, &uniform!(
                 layera: self.layera.as_ref(),

@@ -6,3 +6,4 @@ authors = ["Sam Sartor <me@samsartor.com>", "Daichi Jameson <djameson@mines.edu>
 [dependencies]
 glium = "~0.16"
 nalgebra = "~0.10"
+image = "*"

@@ -9,6 +9,8 @@ extern crate glium; // Safe (Rust-friendly) OpenGL + GLFW wrapper
 
 extern crate nalgebra; // Math library, like glm
 
+extern crate image; // image library
+
 mod shaders;
 mod camera;
 mod project;
