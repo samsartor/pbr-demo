@@ -1,6 +1,8 @@
 //#![feature(type_ascription)]
 //#![feature(box_syntax, box_patterns)]
 //#![feature(log_syntax, trace_macros)]
+#![feature(slice_patterns)]
+
 #![allow(dead_code)]
 
 #[macro_use]

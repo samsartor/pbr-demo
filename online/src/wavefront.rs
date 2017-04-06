@@ -29,6 +29,10 @@ pub trait WavefrontVertex : Vertex {
         pos: &[[f32; 3]], 
         tex: &[[f32; 2]], 
         nor: &[[f32; 3]]) -> Self;
+
+    fn requires_edges() -> bool;
+
+    fn acc_tri(a: &mut Self, b: &mut Self, c: &mut Self);
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -46,6 +50,11 @@ impl WavefrontVertex for V {
         V {
             a_pos: pos[inds.0],
         }
+    }
+
+    fn requires_edges() -> bool { false }
+    fn acc_tri(_: &mut Self, _: &mut Self, _: &mut Self) {
+        unreachable!();
     }
 }
 
@@ -69,6 +78,11 @@ impl WavefrontVertex for Vn {
             a_nor: inds.2.map(|i| nor[i]).unwrap_or([0f32; 3])
         }
     }
+
+    fn requires_edges() -> bool { false }
+    fn acc_tri(_: &mut Self, _: &mut Self, _: &mut Self) {
+        unreachable!();
+    }
 }
 
 implement_vertex!(Vn, a_pos, a_nor);
@@ -90,6 +104,11 @@ impl WavefrontVertex for Vt {
             a_pos: pos[inds.0],
             a_tex: inds.1.map(|i| tex[i]).unwrap_or([0f32; 2]),
         }
+    }
+
+    fn requires_edges() -> bool { false }
+    fn acc_tri(_: &mut Self, _: &mut Self, _: &mut Self) {
+        unreachable!();
     }
 }
 
@@ -115,9 +134,91 @@ impl WavefrontVertex for Vtn {
             a_nor: inds.2.map(|i| nor[i]).unwrap_or([0f32; 3]),
         }
     }
+
+    fn requires_edges() -> bool { false }
+    fn acc_tri(_: &mut Self, _: &mut Self, _: &mut Self) {
+        unreachable!();
+    }
 }
 
 implement_vertex!(Vtn, a_pos, a_tex, a_nor);
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Vtnt {
+    pub a_pos: [f32; 3],
+    pub a_tex: [f32; 2],
+    pub a_nor: [f32; 3],
+    pub a_tan: [f32; 3],
+    pub a_btn: [f32; 3],
+}
+
+fn add_to<T: ::std::ops::AddAssign + Copy>(to: &mut [T; 3], vec: &::nalgebra::Vector3<T>) {
+    to[0] += vec.x;
+    to[1] += vec.y;
+    to[2] += vec.z;
+}
+
+impl WavefrontVertex for Vtnt {
+    fn load(
+        inds: Inds, 
+        pos: &[[f32; 3]], 
+        tex: &[[f32; 2]], 
+        nor: &[[f32; 3]]) -> Self 
+    {
+        Vtnt {
+            a_pos: pos[inds.0],
+            a_tex: inds.1.map(|i| tex[i]).unwrap_or([0f32; 2]),
+            a_nor: inds.2.map(|i| nor[i]).unwrap_or([0f32; 3]),
+            a_tan: [0.; 3],
+            a_btn: [0.; 3],
+        }
+    }
+
+    fn requires_edges() -> bool { true }
+
+    fn acc_tri(a: &mut Self, b: &mut Self, c: &mut Self) {
+        use nalgebra::{Vector3, Point3, Point2, Norm};
+
+        // positions
+        let pos1 = Point3::from(&a.a_pos);
+        let pos2 = Point3::from(&b.a_pos);
+        let pos3 = Point3::from(&c.a_pos);
+        // texture coordinates
+        let uv1 = Point2::from(&a.a_tex);
+        let uv2 = Point2::from(&b.a_tex);
+        let uv3 = Point2::from(&c.a_tex);
+
+        // deltas
+        let edge1 = pos2 - pos1;
+        let edge2 = pos3 - pos1;
+        let delta_uv1 = uv2 - uv1;
+        let delta_uv2 = uv3 - uv1;
+
+        let f = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv1.y);
+
+        let tan = Vector3::new(
+            f * (delta_uv2.y * edge1.x - delta_uv1.y * edge2.x),
+            f * (delta_uv2.y * edge1.y - delta_uv1.y * edge2.y),
+            f * (delta_uv2.y * edge1.z - delta_uv1.y * edge2.z),
+        ).normalize();
+
+        let bitan = Vector3::new(
+            f * (-delta_uv2.x * edge1.x + delta_uv1.x * edge2.x),
+            f * (-delta_uv2.x * edge1.y + delta_uv1.x * edge2.y),
+            f * (-delta_uv2.x * edge1.z + delta_uv1.x * edge2.z),
+        ).normalize();
+
+        add_to(&mut a.a_tan, &tan);
+        add_to(&mut b.a_tan, &tan);
+        add_to(&mut c.a_tan, &tan);
+
+        add_to(&mut a.a_btn, &bitan);
+        add_to(&mut b.a_btn, &bitan);
+        add_to(&mut c.a_btn, &bitan);
+    }
+}
+
+implement_vertex!(Vtnt, a_pos, a_tex, a_nor, a_tan, a_btn);
 
 pub type Inds = (usize, Option<usize>, Option<usize>);
 
@@ -232,8 +333,9 @@ pub fn load<V: WavefrontVertex, R: BufRead>(read: R) -> Result<WavefrontMesh<V>,
                 ])
             },
             Some("f") => {
+                let mut triv = Vec::with_capacity(3);
                 for d in line {
-                    inds.push(add_index(
+                    triv.push(add_index(
                         parse_inds(d, linen)?, 
                         &mut verts, 
                         &mut dedup, 
@@ -242,7 +344,27 @@ pub fn load<V: WavefrontVertex, R: BufRead>(read: R) -> Result<WavefrontMesh<V>,
                         &nor[..],
                         linen
                     )?)
+                };
+
+                if V::requires_edges() {
+                    let tri = match &triv[..] {
+                        &[a, b, c] => {
+                            if a == b || b == c || c == a { return Err(linen); } // indicies must be different
+                            (&verts[a as usize], &verts[b as usize], &verts[c as usize])
+                        },
+                        _ => return Err(linen), // there must be 3 indicies
+                    };
+
+                    let tri = unsafe {
+                        (&mut *(tri.0 as *const V as *mut V),
+                         &mut *(tri.1 as *const V as *mut V),
+                         &mut *(tri.2 as *const V as *mut V))
+                    };
+
+                    V::acc_tri(tri.0, tri.1, tri.2);
                 }
+
+                inds.append(&mut triv);
             },
             Some(_) => (),
             None => (),

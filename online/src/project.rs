@@ -94,7 +94,7 @@ pub struct Project<'a> {
     // are mouse buttons down, and at what position where they first clicked?
     mouse: HashMap<MouseButton, Option<(f32, f32)>>,
     // teapot mesh
-    mesh: (VertexBuffer<wavefront::Vtn>, IndexBuffer<u32>),
+    mesh: (VertexBuffer<wavefront::Vtnt>, IndexBuffer<u32>),
     // full screen quad
     fsquad: (VertexBuffer<wavefront::V>, IndexBuffer<u8>),
     // shaders
@@ -115,6 +115,7 @@ pub struct Project<'a> {
     camera: Option<BasicPerspCamera>,
     exposure: f32,
     gamma: f32,
+    norm_map_strength: f32,
 }
 
 impl<'a> Project<'a> {
@@ -173,6 +174,7 @@ impl<'a> Project<'a> {
             camera: None,
             exposure: 1.0,
             gamma: 2.2,
+            norm_map_strength: 0.4,
         }
     }
 
@@ -201,6 +203,8 @@ impl<'a> Project<'a> {
                     (Pressed, VirtualKeyCode::Down) => self.exposure /= 1.2,
                     (Pressed, VirtualKeyCode::Right) => self.gamma += 0.1,
                     (Pressed, VirtualKeyCode::Left) => { self.gamma -= 0.1; if self.gamma < 0.0 { self.gamma = 0.0 } },
+                    (Pressed, VirtualKeyCode::LBracket) => self.norm_map_strength += 0.1,
+                    (Pressed, VirtualKeyCode::RBracket) => self.norm_map_strength -= 0.1,
                     _ => (),
                 };
                 // TODO on-press events
@@ -362,6 +366,7 @@ impl<'a> Project<'a> {
         draw.draw(&self.mesh.0, &self.mesh.1, &self.gbuff, &GbugffUniforms {
             view: camera.get_view(),
             proj: camera.get_proj(),
+            norm_map_strength: self.norm_map_strength,
             ..Default::default()
         }, &params).unwrap();
     }   

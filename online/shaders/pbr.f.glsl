@@ -5,7 +5,6 @@ uniform sampler2D layerb;
 uniform sampler2D albedo_tex;
 uniform sampler2D metalness_tex;
 uniform sampler2D roughness_tex;
-uniform sampler2D normal_tex;
 uniform vec3 camera_pos;
 uniform float gamma;
 uniform float exposure;
@@ -80,7 +79,6 @@ void main() {
     vec3 albedo = texture(albedo_tex, tex).rgb;
     float roughness = texture(roughness_tex, tex).r;
     float metalness = texture(metalness_tex, tex).r;
-    vec3 normal_map = texture(normal_tex, tex).rgb * 2 - 1;
 
     vec3 lum = vec3(0, 0, 0);
 

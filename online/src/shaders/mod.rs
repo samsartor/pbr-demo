@@ -4,7 +4,6 @@ use self::util::BuildShader;
 
 use glium::uniforms::{Uniforms, UniformValue};
 use glium::backend::{Facade};
-use glium::texture::Texture2d;
 
 use nalgebra::{Point3, Matrix4, Eye};
 
@@ -14,11 +13,14 @@ shader!(gbuff {
     vertex_shader: file("shaders/simple_transform.v.glsl")
         .define("NORM")
         .define("TEX")
+        .define("TAN")
         .define("VIEWPROJ"),
     fragment_shader: file("shaders/gbuff.f.glsl")
         .define_to("I_POS", "v_pos")
         .define_to("I_NORM", "v_norm")
         .define_to("I_TEX", "v_tex")
+        .define_to("I_TAN", "v_tan")
+        .define_to("I_BITAN", "v_bitan")
 });
 
 shader!(gbuff_view {
@@ -47,6 +49,7 @@ pub struct GbugffUniforms {
     pub model: Matrix4<f32>,
     pub view: Matrix4<f32>,
     pub proj: Matrix4<f32>,
+    pub norm_map_strength: f32,
 }
 
 impl Default for GbugffUniforms {
@@ -55,6 +58,7 @@ impl Default for GbugffUniforms {
             model: Matrix4::new_identity(4),
             view: Matrix4::new_identity(4),
             proj:  Matrix4::new_identity(4),
+            norm_map_strength: 1.0,
         }
     }
 }
@@ -66,5 +70,7 @@ impl Uniforms for GbugffUniforms {
         f("model", Mat4(*self.model.as_ref()));
         f("view", Mat4(*self.view.as_ref()));
         f("proj", Mat4(*self.proj.as_ref()));
+
+        f("norm_map_strength", Float(self.norm_map_strength));
     }
 }
