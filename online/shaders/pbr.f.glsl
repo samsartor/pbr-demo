@@ -63,7 +63,10 @@ void main() {
     vec2 tex = b.zw;
 
     if (dot(norm, norm) < 0.001) {
-        f_color = vec4(0, 0, 0, 0);
+        vec3 lum = vec3(0.015, 0.015, 0.02);
+        vec3 color = lum / (lum + vec3(1.0));
+        color = pow(color, vec3(1.0/2.2));
+        f_color = vec4(color, 0);
         return;
     }
 
@@ -74,41 +77,43 @@ void main() {
 
     vec3 lum;
 
-    // PER LIGHT
-
-    vec3 light_pos = vec3(5, 5, 5);
-    vec3 light_color = vec3(64, 64, 64);
+    // ONCE
+    vec3 F0 = vec3(0.04); 
+    F0 = mix(F0, albedo, metalness);
 
     vec3 N = normalize(norm);
     vec3 V = normalize(camera_pos - pos);
+
+    // PER LIGHT
+
+    vec3 light_pos = vec3(5, 5, 5);
+    vec3 light_color = vec3(64, 52, 32);
+
     vec3 L = normalize(light_pos - pos);
     vec3 H = normalize(V + L);
-  
     float distance    = length(light_pos - pos);
     float attenuation = 1.0 / (distance * distance);
-    vec3 radiance     = light_color * attenuation;
-
-    vec3 F0 = vec3(0.04); 
-    F0      = mix(F0, albedo, metalness);
-    vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-    float NDF = DistributionGGX(N, H, roughness);       
-    float G   = GeometrySmith(N, V, L, roughness); 
-
-    vec3 nominator    = NDF * G * F;
-    float denominator = 4 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
-    vec3 brdf         = nominator / denominator; 
-
+    vec3 radiance     = light_color * attenuation;        
+    
+    // cook-torrance brdf
+    float NDF = DistributionGGX(N, H, roughness);        
+    float G   = GeometrySmith(N, V, L, roughness);      
+    vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
+    
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
-      
-    kD *= 1.0 - metalness;
-  
-    float NdotL = max(dot(N, L), 0.0);        
-    lum += (kD * albedo / PI + brdf) * radiance * NdotL;
+    kD *= 1.0 - metalness;     
+    
+    vec3 nominator    = NDF * G * F;
+    float denominator = 4 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.001; 
+    vec3 brdf = nominator / denominator;
+        
+    // add to outgoing radiance Lo
+    float NdotL = max(dot(N, L), 0.0);                
+    lum += (kD * albedo / PI + brdf) * radiance * NdotL; 
 
     // AMBIENT
-    lum += vec3(0.03) * albedo; // * ao;
+    lum += vec3(0.015, 0.015, 0.02) * albedo; // * ao;
 
     // HDR
     vec3 color = lum / (lum + vec3(1.0));

@@ -1,7 +1,7 @@
 use glium::glutin::{Event, MouseButton, VirtualKeyCode, MouseScrollDelta, ElementState};
 use glium::{Program, VertexBuffer, IndexBuffer, Surface, DrawParameters};
 use glium::framebuffer::{DepthRenderBuffer, MultiOutputFrameBuffer};
-use glium::texture::{DepthFormat, UncompressedFloatFormat, MipmapsOption, Texture2d};
+use glium::texture::{DepthFormat, UncompressedFloatFormat, MipmapsOption, Texture2d, SrgbTexture2d};
 use glium::index::PrimitiveType;
 use glium::backend::glutin_backend::GlutinFacade;
 use glium;
@@ -57,11 +57,11 @@ impl FboStore {
     }
 }
 
-fn load_image_rgb<'a>(display: &'a GlutinFacade, path: &str) -> Texture2d {
+fn load_image_rgb<'a>(display: &'a GlutinFacade, path: &str) -> SrgbTexture2d {
     let image = image::load(BufReader::new(File::open(path).expect("Image \"{}\" not found")), image::PNG).unwrap().to_rgb();
     let image_dimensions = image.dimensions();
     let image = glium::texture::RawImage2d::from_raw_rgb_reversed(image.into_raw(), image_dimensions);
-    glium::texture::Texture2d::new(display, image).unwrap()
+    SrgbTexture2d::new(display, image).unwrap()
 }
 
 pub struct PbrTextures<T> {
@@ -96,7 +96,7 @@ pub struct Project<'a> {
     pbr: Program,
     phong: Program,
     // pbr textures
-    pbrtex: PbrTextures<Texture2d>,
+    pbrtex: PbrTextures<SrgbTexture2d>,
     // shader mode
     shade_mode: ViewMode,
     // deferred data
