@@ -57,15 +57,22 @@ impl FboStore {
     }
 }
 
-fn load_image_rgb<'a>(display: &'a GlutinFacade, path: &str) -> SrgbTexture2d {
+fn load_image_rgb<'a>(display: &'a GlutinFacade, path: &str) -> Texture2d {
+    let image = image::load(BufReader::new(File::open(path).expect("Image \"{}\" not found")), image::PNG).unwrap().to_rgb();
+    let image_dimensions = image.dimensions();
+    let image = glium::texture::RawImage2d::from_raw_rgb_reversed(image.into_raw(), image_dimensions);
+    Texture2d::new(display, image).unwrap()
+}
+
+fn load_image_srgb<'a>(display: &'a GlutinFacade, path: &str) -> SrgbTexture2d {
     let image = image::load(BufReader::new(File::open(path).expect("Image \"{}\" not found")), image::PNG).unwrap().to_rgb();
     let image_dimensions = image.dimensions();
     let image = glium::texture::RawImage2d::from_raw_rgb_reversed(image.into_raw(), image_dimensions);
     SrgbTexture2d::new(display, image).unwrap()
 }
 
-pub struct PbrTextures<T> {
-    albedo: T,
+pub struct PbrTextures<T, S> {
+    albedo: S,
     metalness: T,
     roughness: T,
     normal: T,
@@ -96,7 +103,7 @@ pub struct Project<'a> {
     pbr: Program,
     phong: Program,
     // pbr textures
-    pbrtex: PbrTextures<SrgbTexture2d>,
+    pbrtex: PbrTextures<Texture2d, SrgbTexture2d>,
     // shader mode
     shade_mode: ViewMode,
     // deferred data
@@ -156,7 +163,7 @@ impl<'a> Project<'a> {
             layera: Rc::new(layera),
             layerb: Rc::new(layerb),
             pbrtex: PbrTextures {
-                albedo: load_image_rgb(display, "textures/albedo.png"),
+                albedo: load_image_srgb(display, "textures/albedo.png"),
                 metalness: load_image_rgb(display, "textures/metalness.png"),
                 roughness: load_image_rgb(display, "textures/roughness.png"),
                 normal: load_image_rgb(display, "textures/normal.png"),
@@ -290,6 +297,8 @@ impl<'a> Project<'a> {
                 pos_range: (0.0f32, 0.333f32),
                 tex_range: (0.333f32, 0.666f32),
                 norm_range: (0.666f32, 1.0f32),
+                albedo_tex: &self.pbrtex.albedo,
+                metalness_tex: &self.pbrtex.metalness,
             ), &Default::default()).unwrap(),
             PBR => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.pbr, &uniform!(
                 layera: self.layera.as_ref(),
@@ -303,9 +312,9 @@ impl<'a> Project<'a> {
             PHONG => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.phong, &uniform!(
                 layera: self.layera.as_ref(),
                 layerb: self.layerb.as_ref(),
-                pos_range: (0.0f32, 0.0f32),
-                tex_range: (0.0f32, 1.0f32),
-                norm_range: (0.0f32, 0.0f32),
+                camera_pos: *camera.eye.as_ref(),
+                albedo_tex: &self.pbrtex.albedo,
+                roughness_tex: &self.pbrtex.roughness,
             ), &Default::default()).unwrap(),
         }        
     }

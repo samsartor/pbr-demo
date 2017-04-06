@@ -33,7 +33,7 @@ shader!(pbr {
 
 shader!(phong {
     vertex_shader: file("shaders/blit.v.glsl"),
-    fragment_shader: file("shaders/gbuff_view.f.glsl")
+    fragment_shader: file("shaders/deferred_phong.f.glsl")
 });
 
 #[derive(Debug, Clone, Copy)]
