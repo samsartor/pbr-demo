@@ -7,13 +7,17 @@ uniform sampler2D metalness_tex;
 uniform sampler2D roughness_tex;
 uniform sampler2D normal_tex;
 uniform vec3 camera_pos;
+uniform float gamma;
+uniform float exposure;
 
 in vec2 v_pos;
 
 layout(location = 0) out vec4 f_color;
 
 const float PI = 3.14159265359;
+
 const int LIGHT_COUNT = 5;
+const vec3 ambient = vec3(0.015, 0.015, 0.025) * 3;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
@@ -55,6 +59,11 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
+vec3 to_ldr(vec3 lum) {
+    vec3 color = vec3(1.0) - exp(-lum * exposure);
+    return pow(color, vec3(1.0 / gamma)); // Not sure why this over-gammas it
+}
+
 void main() {
     vec4 a = texture(layera, v_pos);
     vec4 b = texture(layerb, v_pos);
@@ -64,10 +73,7 @@ void main() {
     vec2 tex = b.zw;
 
     if (dot(norm, norm) < 0.001) {
-        vec3 lum = vec3(0.015, 0.015, 0.02);
-        vec3 color = lum / (lum + vec3(1.0));
-        color = pow(color, vec3(1.0/2.2));
-        f_color = vec4(color, 0);
+        f_color = vec4(to_ldr(ambient), 0);
         return;
     }
 
@@ -117,13 +123,8 @@ void main() {
     }
 
     // AMBIENT
-    lum += vec3(0.015, 0.015, 0.02) * albedo; // * ao;
-
-    // HDR
-    vec3 color = lum / (lum + vec3(1.0));
-    color = pow(color, vec3(1.0/2.2));
-
+    lum += ambient * albedo; // * ao;
 
     // OUT
-    f_color = vec4(color, 1);
+    f_color = vec4(to_ldr(lum), 1);
 } 

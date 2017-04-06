@@ -23,9 +23,13 @@ use glium::backend::glutin_backend::GlutinFacade;
 
 use project::Project;
 
+use std::env::args;
+
 const WINDOW_SIZE: (u32, u32) = (1920, 1080);
 
 fn main() {
+    let tex_folder = args().nth(1).expect("Expected texture folder arg");
+
      // create OpenGL context
     let display = WindowBuilder::new()
         .with_dimensions(WINDOW_SIZE.0, WINDOW_SIZE.1)
@@ -52,7 +56,7 @@ fn main() {
         _ => panic!("OpenGL 4.1, OpenGL ES, or better is required, exiting"),
     }
 
-    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1));
+    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1), &tex_folder);
     main_loop(&mut project, &display);
 }
 

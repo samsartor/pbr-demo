@@ -113,11 +113,12 @@ pub struct Project<'a> {
     // arcball theta, phi, radius
     arcball: (f32, f32, f32),
     camera: Option<BasicPerspCamera>,
-
+    exposure: f32,
+    gamma: f32,
 }
 
 impl<'a> Project<'a> {
-    pub fn new(display: &'a GlutinFacade, start_size: (u32, u32)) -> Project<'a> {
+    pub fn new(display: &'a GlutinFacade, start_size: (u32, u32), tex_folder: &str) -> Project<'a> {
         let sphere = wavefront::load_from_path("sphere.obj").unwrap();
 
         let layera = Texture2d::empty_with_format(
@@ -163,13 +164,15 @@ impl<'a> Project<'a> {
             layera: Rc::new(layera),
             layerb: Rc::new(layerb),
             pbrtex: PbrTextures {
-                albedo: load_image_srgb(display, "textures/albedo.png"),
-                metalness: load_image_rgb(display, "textures/metalness.png"),
-                roughness: load_image_rgb(display, "textures/roughness.png"),
-                normal: load_image_rgb(display, "textures/normal.png"),
+                albedo: load_image_srgb(display, &(tex_folder.to_owned() + "/albedo.png")),
+                metalness: load_image_rgb(display, &(tex_folder.to_owned() + "/metalness.png")),
+                roughness: load_image_rgb(display, &(tex_folder.to_owned() + "/roughness.png")),
+                normal: load_image_rgb(display, &(tex_folder.to_owned() + "/normal.png")),
             },
             arcball: (0., 0., 10.),
             camera: None,
+            exposure: 1.0,
+            gamma: 2.2,
         }
     }
 
@@ -194,6 +197,10 @@ impl<'a> Project<'a> {
 
                 match (state, code) {
                     (Pressed, VirtualKeyCode::M) => self.shade_mode = self.shade_mode.cycle(),
+                    (Pressed, VirtualKeyCode::Up) => self.exposure *= 1.2,
+                    (Pressed, VirtualKeyCode::Down) => self.exposure /= 1.2,
+                    (Pressed, VirtualKeyCode::Right) => self.gamma += 0.1,
+                    (Pressed, VirtualKeyCode::Left) => { self.gamma -= 0.1; if self.gamma < 0.0 { self.gamma = 0.0 } },
                     _ => (),
                 };
                 // TODO on-press events
@@ -308,6 +315,8 @@ impl<'a> Project<'a> {
                 roughness_tex: &self.pbrtex.roughness,
                 metalness_tex: &self.pbrtex.metalness,
                 normal_tex: &self.pbrtex.normal,
+                gamma: self.gamma,
+                exposure: self.exposure,
             ), &Default::default()).unwrap(),
             PHONG => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.phong, &uniform!(
                 layera: self.layera.as_ref(),
