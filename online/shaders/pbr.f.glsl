@@ -82,7 +82,7 @@ void main() {
     float metalness = texture(metalness_tex, tex).r;
     vec3 normal_map = texture(normal_tex, tex).rgb * 2 - 1;
 
-    vec3 lum;
+    vec3 lum = vec3(0, 0, 0);
 
     // ONCE
     vec3 F0 = vec3(0.04); 
