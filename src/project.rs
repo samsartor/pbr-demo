@@ -119,8 +119,8 @@ pub struct Project<'a> {
 }
 
 impl<'a> Project<'a> {
-    pub fn new(display: &'a GlutinFacade, start_size: (u32, u32), tex_folder: &str) -> Project<'a> {
-        let sphere = wavefront::load_from_path("sphere.obj").unwrap();
+    pub fn new(display: &'a GlutinFacade, start_size: (u32, u32), model: &str, tex_folder: &str) -> Project<'a> {
+        let model = wavefront::load_from_path(model).unwrap();
 
         let layera = Texture2d::empty_with_format(
             display, 
@@ -154,7 +154,7 @@ impl<'a> Project<'a> {
             mouse_pos: None,
             keys: HashMap::new(),
             mouse: HashMap::new(),
-            mesh: (sphere.vertex_buffer(display).unwrap(), sphere.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
+            mesh: (model.vertex_buffer(display).unwrap(), model.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
             fsquad: fsquad,
             gbuff: shaders::gbuff(display).expect("gbuff program error"),
             gbuff_view: shaders::gbuff_view(display).expect("gbuff_view program error"),
@@ -203,8 +203,8 @@ impl<'a> Project<'a> {
                     (Pressed, VirtualKeyCode::Down) => self.exposure /= 1.2,
                     (Pressed, VirtualKeyCode::Right) => self.gamma += 0.1,
                     (Pressed, VirtualKeyCode::Left) => { self.gamma -= 0.1; if self.gamma < 0.0 { self.gamma = 0.0 } },
-                    (Pressed, VirtualKeyCode::LBracket) => self.norm_map_strength += 0.1,
-                    (Pressed, VirtualKeyCode::RBracket) => self.norm_map_strength -= 0.1,
+                    (Pressed, VirtualKeyCode::RBracket) => self.norm_map_strength += 0.05,
+                    (Pressed, VirtualKeyCode::LBracket) => self.norm_map_strength -= 0.05,
                     _ => (),
                 };
                 // TODO on-press events

@@ -30,7 +30,9 @@ use std::env::args;
 const WINDOW_SIZE: (u32, u32) = (1920, 1080);
 
 fn main() {
-    let tex_folder = args().nth(1).expect("Expected texture folder arg");
+    let mut args = args().skip(1);
+    let model = args.next().expect("Expected model arg");
+    let tex_folder = args.next().expect("Expected texture folder arg");
 
      // create OpenGL context
     let display = WindowBuilder::new()
@@ -58,7 +60,7 @@ fn main() {
         _ => panic!("OpenGL 4.1, OpenGL ES, or better is required, exiting"),
     }
 
-    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1), &tex_folder);
+    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1), &model, &tex_folder);
     main_loop(&mut project, &display);
 }
 
