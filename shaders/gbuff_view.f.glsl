@@ -7,6 +7,7 @@ uniform vec2 norm_range;
 uniform vec2 tex_range;
 uniform sampler2D albedo_tex;
 uniform sampler2D metalness_tex;
+uniform vec2 pix_size;
 
 in vec2 v_pos;
 

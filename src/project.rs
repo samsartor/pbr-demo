@@ -1,9 +1,9 @@
 use glium::glutin::{Event, MouseButton, VirtualKeyCode, MouseScrollDelta, ElementState};
 use glium::{Program, VertexBuffer, IndexBuffer, Surface, DrawParameters};
-use glium::framebuffer::{DepthRenderBuffer, MultiOutputFrameBuffer};
-use glium::texture::{DepthFormat, UncompressedFloatFormat, MipmapsOption, Texture2d, SrgbTexture2d};
+use glium::texture::{Texture2d, SrgbTexture2d};
 use glium::index::PrimitiveType;
 use glium::backend::glutin_backend::GlutinFacade;
+use glium::uniforms::{Sampler, MinifySamplerFilter, MagnifySamplerFilter};
 use glium;
 
 use nalgebra::{Point3, Vector3};
@@ -19,6 +19,7 @@ use wavefront;
 use image;
 use shaders::{self, GbugffUniforms};
 use camera::{Camera, BasicPerspCamera, new_perspective};
+use gbuff::Gbuff;
 
 const PI: f32 = ::std::f32::consts::PI;
 const HPI: f32 = 0.5 *  PI;
@@ -38,22 +39,6 @@ impl ViewMode {
             DEBUG => PHONG,
             PHONG => PBR,
         }
-    }
-}
-
-pub struct FboStore {
-    depth: Rc<DepthRenderBuffer>,
-    layera: Rc<Texture2d>,
-    layerb: Rc<Texture2d>,
-}
-
-impl FboStore {
-    pub fn init_fbo<'a>(&'a self, display: &GlutinFacade) -> MultiOutputFrameBuffer<'a> {
-        MultiOutputFrameBuffer::with_depth_buffer(
-            display, 
-            vec![("layera", &*self.layera), ("layerb", &*self.layerb)], 
-            &*self.depth
-        ).unwrap()
     }
 }
 
@@ -78,9 +63,9 @@ pub struct PbrTextures<T, S> {
     normal: T,
 }
 
-pub struct Project<'a> {
+pub struct Project {
     // reference back to the gl context
-    display: &'a GlutinFacade,
+    display: Rc<GlutinFacade>,
     // when was the program Sized
     start: Instant,
     // when was draw last called
@@ -98,7 +83,7 @@ pub struct Project<'a> {
     // full screen quad
     fsquad: (VertexBuffer<wavefront::V>, IndexBuffer<u8>),
     // shaders
-    gbuff: Program, // store deferred gbuff data
+    gbuff_render: Program, // store deferred gbuff data
     gbuff_view: Program,
     pbr: Program,
     phong: Program,
@@ -107,9 +92,7 @@ pub struct Project<'a> {
     // shader mode
     shade_mode: ViewMode,
     // deferred data
-    depth: Rc<DepthRenderBuffer>,
-    layera: Rc<Texture2d>,
-    layerb: Rc<Texture2d>,
+    gbuff: Gbuff,
     // arcball theta, phi, radius
     arcball: (f32, f32, f32),
     camera: Option<BasicPerspCamera>,
@@ -118,71 +101,49 @@ pub struct Project<'a> {
     norm_map_strength: f32,
 }
 
-impl<'a> Project<'a> {
-    pub fn new(display: &'a GlutinFacade, start_size: (u32, u32), model: &str, tex_folder: &str) -> Project<'a> {
+impl Project {
+    pub fn new(display: Rc<GlutinFacade>, start_size: (u32, u32), model: &str, tex_folder: &str) -> Project {
         let model = wavefront::load_from_path(model).unwrap();
 
-        let layera = Texture2d::empty_with_format(
-            display, 
-            UncompressedFloatFormat::F32F32F32F32,
-            MipmapsOption::NoMipmap,
-            start_size.0, start_size.1).unwrap();
-
-        let layerb = Texture2d::empty_with_format(
-            display, 
-            UncompressedFloatFormat::F32F32F32F32,
-            MipmapsOption::NoMipmap,
-            start_size.0, start_size.1).unwrap();
-
-        let depth = DepthRenderBuffer::new(display, DepthFormat::I24, start_size.0, start_size.1).unwrap();
+        let display_ref = display.as_ref();
 
         let fsquad = (
-            VertexBuffer::immutable(display, &[
+            VertexBuffer::immutable(display.as_ref(), &[
                 wavefront::V { a_pos: [ -1., -1., 0. ] },
                 wavefront::V { a_pos: [ -1.,  1., 0. ] },
                 wavefront::V { a_pos: [  1., -1., 0. ] },
                 wavefront::V { a_pos: [  1.,  1., 0. ] },
             ]).unwrap(), 
-            IndexBuffer::immutable(display, PrimitiveType::TrianglesList, &[0, 1, 2, 2, 1, 3]).unwrap()
+            IndexBuffer::immutable(display_ref, PrimitiveType::TrianglesList, &[0, 1, 2, 2, 1, 3]).unwrap()
         );
 
         Project { 
-            display: display,
+            display: display.clone(),
             start: Instant::now(),
             last_draw: None,
             screen_size: start_size,
             mouse_pos: None,
             keys: HashMap::new(),
             mouse: HashMap::new(),
-            mesh: (model.vertex_buffer(display).unwrap(), model.index_buffer(display, PrimitiveType::TrianglesList).unwrap()),
+            mesh: (model.vertex_buffer(display_ref).unwrap(), model.index_buffer(display_ref, PrimitiveType::TrianglesList).unwrap()),
             fsquad: fsquad,
-            gbuff: shaders::gbuff(display).expect("gbuff program error"),
-            gbuff_view: shaders::gbuff_view(display).expect("gbuff_view program error"),
-            pbr: shaders::pbr(display).expect("pbr program error"),
-            phong: shaders::phong(display).expect("phong program error"),
+            gbuff_render: shaders::gbuff(display_ref).expect("gbuff program error"),
+            gbuff_view: shaders::gbuff_view(display_ref).expect("gbuff_view program error"),
+            pbr: shaders::pbr(display_ref).expect("pbr program error"),
+            phong: shaders::phong(display_ref).expect("phong program error"),
             shade_mode: ViewMode::DEBUG,
-            depth: Rc::new(depth),
-            layera: Rc::new(layera),
-            layerb: Rc::new(layerb),
+            gbuff: Gbuff::new(display.clone(), start_size),
             pbrtex: PbrTextures {
-                albedo: load_image_srgb(display, &(tex_folder.to_owned() + "/albedo.png")),
-                metalness: load_image_rgb(display, &(tex_folder.to_owned() + "/metalness.png")),
-                roughness: load_image_rgb(display, &(tex_folder.to_owned() + "/roughness.png")),
-                normal: load_image_rgb(display, &(tex_folder.to_owned() + "/normal.png")),
+                albedo: load_image_srgb(display_ref, &(tex_folder.to_owned() + "/albedo.png")),
+                metalness: load_image_rgb(display_ref, &(tex_folder.to_owned() + "/metalness.png")),
+                roughness: load_image_rgb(display_ref, &(tex_folder.to_owned() + "/roughness.png")),
+                normal: load_image_rgb(display_ref, &(tex_folder.to_owned() + "/normal.png")),
             },
             arcball: (0., 0., 10.),
             camera: None,
             exposure: 1.0,
             gamma: 2.2,
             norm_map_strength: 0.4,
-        }
-    }
-
-    pub fn get_store(&self) -> FboStore {
-        FboStore {
-            depth: self.depth.clone(),
-            layera: self.layera.clone(),
-            layerb: self.layerb.clone(),
         }
     }
 
@@ -210,9 +171,8 @@ impl<'a> Project<'a> {
                 // TODO on-press events
             },
             Resized(w, h) => {
-                self.screen_size = (w, h)
-
-                // TODO resize FBOs
+                self.screen_size = (w, h);
+                self.gbuff = Gbuff::new(self.display.clone(), self.screen_size);
             },
             MouseMoved(x, y) => {
                 let (w, h) = self.screen_size;
@@ -297,42 +257,7 @@ impl<'a> Project<'a> {
             25., 0.1, 1000.)
     }
 
-    pub fn post<S: Surface>(&mut self, draw: &mut S) {
-        let camera = self.get_camera();
-
-        use self::ViewMode::*;
-        match self.shade_mode {
-            DEBUG => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.gbuff_view, &uniform!(
-                layera: self.layera.as_ref(),
-                layerb: self.layerb.as_ref(),
-                pos_range: (0.0f32, 0.333f32),
-                tex_range: (0.333f32, 0.666f32),
-                norm_range: (0.666f32, 1.0f32),
-                albedo_tex: &self.pbrtex.albedo,
-                metalness_tex: &self.pbrtex.metalness,
-            ), &Default::default()).unwrap(),
-            PBR => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.pbr, &uniform!(
-                layera: self.layera.as_ref(),
-                layerb: self.layerb.as_ref(),
-                camera_pos: *camera.eye.as_ref(),
-                albedo_tex: &self.pbrtex.albedo,
-                roughness_tex: &self.pbrtex.roughness,
-                metalness_tex: &self.pbrtex.metalness,
-                normal_tex: &self.pbrtex.normal,
-                gamma: self.gamma,
-                exposure: self.exposure,
-            ), &Default::default()).unwrap(),
-            PHONG => draw.draw(&self.fsquad.0, &self.fsquad.1, &self.phong, &uniform!(
-                layera: self.layera.as_ref(),
-                layerb: self.layerb.as_ref(),
-                camera_pos: *camera.eye.as_ref(),
-                albedo_tex: &self.pbrtex.albedo,
-                roughness_tex: &self.pbrtex.roughness,
-            ), &Default::default()).unwrap(),
-        }        
-    }
-
-    pub fn draw<S: Surface>(&mut self, draw: &mut S) {
+    pub fn draw<S: Surface>(&mut self, surf: &mut S) {
         let (elapsed, delta) = self.update_draw_timer();
 
         if let Some((dx, dy)) = self.reset_mouse_drag(MouseButton::Left) {
@@ -343,32 +268,82 @@ impl<'a> Project<'a> {
             if self.arcball.1 >  HPI - 0.01 { self.arcball.1 =  HPI - 0.01; }
         }
 
-        draw.clear_depth(1.0);
-        draw.clear_color(0.0, 0.0, 0.0, 0.0);    
-
-        let params = DrawParameters {
-            depth: glium::Depth {
-                test: glium::DepthTest::IfLess,
-                write: true,
-                .. Default::default()
-            },
-            .. Default::default()
-        };
-
         let camera = self.get_camera();
 
         //=================//
         //                 //
-        // TODO Draw stuff //
+        // Geometry Pass   //
         //                 //
         //=================//
 
-        draw.draw(&self.mesh.0, &self.mesh.1, &self.gbuff, &GbugffUniforms {
-            view: camera.get_view(),
-            proj: camera.get_proj(),
-            norm_map_strength: self.norm_map_strength,
-            ..Default::default()
-        }, &params).unwrap();
+        {
+            let draw = self.gbuff.get_mut_fbo();
+            draw.clear_depth(1.0);
+            draw.clear_color(0.0, 0.0, 0.0, 0.0);
+
+            let params = DrawParameters {
+                depth: glium::Depth {
+                    test: glium::DepthTest::IfLess,
+                    write: true,
+                    .. Default::default()
+                },
+                .. Default::default()
+            };
+
+            draw.draw(&self.mesh.0, &self.mesh.1, &self.gbuff_render, &GbugffUniforms {
+                view: camera.get_view(),
+                proj: camera.get_proj(),
+                norm_map_strength: self.norm_map_strength,
+                ..Default::default()
+            }, &params).unwrap();
+        }
+
+        //=================//
+        //                 //
+        // Deferred Pass   //
+        //                 //
+        //=================//
+
+        let layera = Sampler::new(self.gbuff.get_layera());
+        layera.minify_filter(MinifySamplerFilter::Nearest);
+        layera.magnify_filter(MagnifySamplerFilter::Nearest);
+
+        let layerb = Sampler::new(self.gbuff.get_layerb());
+        layerb.minify_filter(MinifySamplerFilter::Nearest);
+        layerb.magnify_filter(MagnifySamplerFilter::Nearest);
+
+        use self::ViewMode::*;
+        match self.shade_mode {
+            DEBUG => surf.draw(&self.fsquad.0, &self.fsquad.1, &self.gbuff_view, &uniform!(
+                layera: layera,
+                layerb: layerb,
+                pos_range: (0.0f32, 0.333f32),
+                tex_range: (0.333f32, 0.666f32),
+                norm_range: (0.666f32, 1.0f32),
+                albedo_tex: &self.pbrtex.albedo,
+                metalness_tex: &self.pbrtex.metalness,
+            ), &Default::default()).unwrap(),
+            PBR => surf.draw(&self.fsquad.0, &self.fsquad.1, &self.pbr, &uniform!(
+                layera: layera,
+                layerb: layerb,
+                camera_pos: *camera.eye.as_ref(),
+                albedo_tex: &self.pbrtex.albedo,
+                roughness_tex: &self.pbrtex.roughness,
+                metalness_tex: &self.pbrtex.metalness,
+                normal_tex: &self.pbrtex.normal,
+                gamma: self.gamma,
+                exposure: self.exposure,
+                time: elapsed as f32,
+            ), &Default::default()).unwrap(),
+            PHONG => surf.draw(&self.fsquad.0, &self.fsquad.1, &self.phong, &uniform!(
+                layera: layera,
+                layerb: layerb,
+                camera_pos: *camera.eye.as_ref(),
+                albedo_tex: &self.pbrtex.albedo,
+                roughness_tex: &self.pbrtex.roughness,
+                time: elapsed as f32,
+            ), &Default::default()).unwrap(),
+        }        
     }   
 }
 

@@ -17,6 +17,7 @@ mod shaders;
 mod camera;
 mod project;
 mod wavefront;
+mod gbuff;
 
 // use safe GLFW wrapper stuff
 use glium::glutin::{self, Event, WindowBuilder, GlProfile, GlRequest};
@@ -26,8 +27,9 @@ use glium::backend::glutin_backend::GlutinFacade;
 use project::Project;
 
 use std::env::args;
+use std::rc::Rc;
 
-const WINDOW_SIZE: (u32, u32) = (1920, 1080);
+const WINDOW_SIZE: (u32, u32) = (512, 512);
 
 fn main() {
     let mut args = args().skip(1);
@@ -35,14 +37,14 @@ fn main() {
     let tex_folder = args.next().expect("Expected texture folder arg");
 
      // create OpenGL context
-    let display = WindowBuilder::new()
+    let display = Rc::new(WindowBuilder::new()
         .with_dimensions(WINDOW_SIZE.0, WINDOW_SIZE.1)
         .with_title(format!("Sideline"))
         .with_gl_profile(GlProfile::Core) // core profile
         .with_gl(GlRequest::Specific(glutin::Api::OpenGl, (4, 1))) // as new as possible
         .with_depth_buffer(24)
         .build_glium() // do creation context
-        .expect("Rare GLFW error occured, sorry :("); // if some weird error occurs, panic
+        .expect("Rare GLFW error occured, sorry :(")); // if some weird error occurs, panic
 
     let version = display.get_opengl_version();
 
@@ -60,20 +62,14 @@ fn main() {
         _ => panic!("OpenGL 4.1, OpenGL ES, or better is required, exiting"),
     }
 
-    let mut project = Project::new(&display, (WINDOW_SIZE.0, WINDOW_SIZE.1), &model, &tex_folder);
-    main_loop(&mut project, &display);
+    let mut project = Project::new(display.clone(), (WINDOW_SIZE.0, WINDOW_SIZE.1), &model, &tex_folder);
+    main_loop(&mut project, display.as_ref());
 }
 
 fn main_loop(project: &mut Project, display: &GlutinFacade) {
-    let fbo_store = project.get_store();
-    let mut fbo = fbo_store.init_fbo(display);
-
     loop {
-        // get nice OpenGL-encapsulation-state-management-object-thing
-        project.draw(&mut fbo); // DRAW!!!
-
         let mut target = display.draw();
-        project.post(&mut target);
+        project.draw(&mut target);
         target.finish().unwrap(); // cleanup, check for errors
 
         // do display events

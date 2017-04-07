@@ -8,6 +8,7 @@ uniform sampler2D roughness_tex;
 uniform vec3 camera_pos;
 uniform float gamma;
 uniform float exposure;
+uniform float time;
 
 in vec2 v_pos;
 
@@ -93,7 +94,7 @@ void main() {
 
     for (int light_i = 0; light_i < LIGHT_COUNT; light_i++) {
         float light_angle = PI * light_i * 2.0 / LIGHT_COUNT;
-        vec3 light_pos = vec3(5 * sin(light_angle), 4, 5 * cos(light_angle));
+        vec3 light_pos = vec3(5 * sin(light_angle), sin(time * 0.6) * 4, 5 * cos(light_angle));
         vec3 light_color = vec3(48, 40, 24);
 
         vec3 L = normalize(light_pos - pos);
