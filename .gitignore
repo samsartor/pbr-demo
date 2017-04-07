@@ -1,5 +1,2 @@
-/common/target/
-/common/Cargo.lock
-/offline/target/
-/online/target/
+target/
 **/*.rs.bk
