@@ -28,6 +28,7 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     left_down: bool,
     cam: ArcBall<PerspectiveFov<f32>, Deg<f32>>,
     start_time: Instant,
+    exposure: f32,
 
     //===========//
     // App Stuff //
@@ -213,6 +214,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 },
             },
             start_time: Instant::now(),
+            exposure: 0.1,
 
             encoder: factory.create_encoder(),
 
@@ -260,7 +262,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
-            exposure: 0.06,
+            exposure: self.exposure,
             gamma: 2.2,
             time: elapsed as f32,
         });
@@ -285,6 +287,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
                 match (state, code) {
                     (Pressed, F) => self.show_floor = !self.show_floor,
+                    (Pressed, Up) => self.exposure *= 1.1,
+                    (Pressed, Down) => self.exposure *= 0.9,
                     // (Pressed, M) => self.model_index = (self.model_index + 1) % self.models.len(),
                     _ => ()
                 }
