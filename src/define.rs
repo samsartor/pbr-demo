@@ -53,14 +53,15 @@ gfx_defines!{
         proj: [[f32; 4]; 4] = "proj",
     }
 
-    constant PointLight {
-        pos: [f32; 4] = "pos",
-        color: [f32; 4] = "color",
+    constant LightBlock {
+        matrix: [[f32; 4]; 4] = "light_matrix",
+        pos: [f32; 4] = "light_pos",
+        color: [f32; 4] = "light_color",
+        ambient: [f32; 4] = "ambient",
     }
 
     constant LiveBlock {
         eye_pos: [f32; 4] = "eye_pos",
-        ambient: [f32; 4] = "ambient",
         gamma: f32 = "gamma",
         exposure: f32 = "exposure",
         time: f32 = "time",
@@ -78,7 +79,7 @@ gfx_defines!{
     pipeline pbr {
         verts: gfx::VertexBuffer<V> = (),
         live: gfx::ConstantBuffer<LiveBlock> = "live",
-        // shadow: gfx::TextureSampler<f32> = "shadow_depth",
+        light: gfx::ConstantBuffer<LightBlock> = "light",
         layer_a: gfx::TextureSampler<LayerFormat> = "layer_a",
         layer_b: gfx::TextureSampler<LayerFormat> = "layer_b",
         albedo: gfx::TextureSampler<PbrTex> = "albedo_tex",

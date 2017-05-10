@@ -4,7 +4,6 @@ uniform sampler2D value;
 
 layout(std140) uniform live {
     vec4 eye_pos;
-    vec4 ambient;
     float gamma;
     float exposure;
     float time;

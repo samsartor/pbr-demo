@@ -28,6 +28,7 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     start_time: Instant,
     exposure: f32,
     current: usize,
+    lights: Vec<PointLight>,
 
     //===========//
     // App Stuff //
@@ -75,6 +76,35 @@ impl<R: gfx::Resources> Object<R> {
     }
 }
 
+struct PointLight {
+    pub base_angle: Deg<f32>,
+    pub block: define::LightBlock,
+}
+
+impl PointLight {
+    pub fn update<R: gfx::Resources, C: gfx::CommandBuffer<R>>(&mut self, time: f32, encoder: &mut gfx::Encoder<R, C>, pbr_data: &mut define::pbr::Data<R>) {
+        let theta = self.base_angle + Deg(time * 30.);
+
+        let camera = ArcBall {
+            origin: Point3::new(0., 0., 0.),
+            theta: theta,
+            phi: Deg((theta + Deg(time * 13.)).sin() * 45.),
+            dist: 7.,
+            projection: PerspectiveFov {
+                fovy: Deg(60.).into(),
+                aspect: 1., 
+                near: 0.1, far: 100.
+            },
+        };
+        let camera = camera.to_camera();
+
+        self.block.matrix = (camera.get_proj() * camera.get_view()).into();
+        self.block.pos = camera.get_eye().to_vec().extend(1.).into();
+
+        encoder.update_constant_buffer(&pbr_data.light, &self.block);
+    }
+}
+
 struct ViewPair<R: gfx::Resources, T: gfx::format::Formatted> {
     resource: gfx::handle::ShaderResourceView<R, T::View>,
     target: gfx::handle::RenderTargetView<R, T>,
@@ -114,7 +144,7 @@ fn load_image<R, C, F, T, P>(factory: &mut F, path: P) -> (Texture<R, T::Surface
     ).expect("Could not upload texture")  // TODO: Result
 }
 
-fn get_args() -> Vec<PathBuf> {
+fn get_args() -> (Vec<PathBuf>, usize) {
     use clap::{App, Arg};
 
     let args = App::new("PBR Demo")
@@ -126,9 +156,18 @@ fn get_args() -> Vec<PathBuf> {
             .help("list of directories, each one containing model.obj and several PBR textures")
             .required(true)
             .min_values(1))
+        .arg(Arg::with_name("lights")
+            .short("l")
+            .long("lights")
+            .help("how many point lights")
+            .default_value("5"))
     .get_matches();
 
-    args.values_of("object").unwrap().map(|v| PathBuf::from(v)).collect()
+    (
+        args.values_of("object").unwrap().map(|v| PathBuf::from(v)).collect(),
+        args.value_of("lights").map(|v| v.parse()).unwrap().unwrap(),
+    )
+
 }
 
 impl<R, C> ApplicationBase<R, C> for App<R, C> where
@@ -138,7 +177,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn new<F>(factory: &mut F, _: gfx_app::shade::Backend, window_targets: gfx_app::WindowTargets<R>) -> Self
     where F: gfx_app::Factory<R, CommandBuffer=C>,
     {
-        let directories = get_args();
+        let (directories, light_count) = get_args();
         let dim = window_targets.color.get_dimensions();
 
         let sampler = factory.create_sampler(texture::SamplerInfo::new(
@@ -224,6 +263,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         let pbr_data = define::pbr::Data {
             verts: quad.0.clone(),
             live: factory.create_constant_buffer(1),
+            light: factory.create_constant_buffer(1),
             layer_a: (layer_a.resource.clone(), gbuf_sampler.clone()),
             layer_b: (layer_b.resource.clone(), gbuf_sampler.clone()),
             albedo: (objects[0].albedo.clone(), sampler.clone()),
@@ -238,6 +278,21 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             value: (value.resource.clone(), gbuf_sampler.clone()),
             color: window_targets.color.clone(),  
         };
+
+        let per_ambient = [0.015, 0.015, 0.025, 1.5 / light_count as f32];
+
+        let lights = (0..light_count)
+            .map(|i| Deg(i as f32 * 360. / light_count as f32))
+            .map(|angle| PointLight {
+                base_angle: angle,
+                block: define::LightBlock {
+                    matrix: Matrix4::identity().into(),
+                    pos: [0.; 4],
+                    ambient: per_ambient,
+                    color: [1.0, 0.9, 0.5, 50.],
+
+                },
+            }).collect();
 
         App {
             mouse_pos: None,
@@ -258,6 +313,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             start_time: Instant::now(),
             exposure: 0.1,
             current: 0,
+            lights: lights,
 
             encoder: factory.create_encoder(),
 
@@ -309,13 +365,16 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
-            ambient: [0.015, 0.015, 0.025, 1.5],
             exposure: self.exposure,
             gamma: 2.2,
             time: elapsed as f32,
         });
 
-        self.encoder.draw(&self.quad.1, &self.pbr_pso, &self.pbr_data);
+        for l in &mut self.lights {
+            l.update(elapsed as f32, &mut self.encoder, &mut self.pbr_data);
+            self.encoder.draw(&self.quad.1, &self.pbr_pso, &self.pbr_data);
+        }
+
         self.encoder.draw(&self.quad.1, &self.ldr_pso, &self.ldr_data);
 
         // send to GPU
