@@ -125,7 +125,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         use self::format::*;
 
         let normal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("normal.png"));
-        let albedo_tex = load_image::<_, _, _, (R8_G8_B8_A8, Srgb), _>(factory, directory.join("albedo.png"));
+        let albedo_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("albedo.png"));
         let metal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("metalness.png"));
         let rough_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("roughness.png"));
 
@@ -161,7 +161,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         let sampler = factory.create_sampler(texture::SamplerInfo::new(
             texture::FilterMethod::Bilinear,
-            texture::WrapMode::Border,
+            texture::WrapMode::Tile,
         ));
 
         let deferred_data = define::deferred::Data {
@@ -205,7 +205,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 origin: Point3::new(0., 0., 0.),
                 theta: Deg(45.),
                 phi: Deg(35.264),
-                dist: 7.,
+                dist: 4.,
                 projection: PerspectiveFov {
                     fovy: Deg(35.).into(),
                     aspect: window_targets.aspect_ratio, 
@@ -231,8 +231,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         D: gfx::Device<Resources=R, CommandBuffer=C>
     {
         // camera stuff
-        self.cam.theta += Deg(self.orbit_diff.0 * 1.);
-        self.cam.phi += Deg(self.orbit_diff.1 * 1.);
+        self.cam.theta += Deg(self.orbit_diff.0 * 0.2);
+        self.cam.phi += Deg(self.orbit_diff.1 * 0.2);
         if self.cam.phi < Deg(-89.) { self.cam.phi = Deg(-89.) }
         if self.cam.phi > Deg(89.) { self.cam.phi = Deg(89.) }
 
@@ -260,8 +260,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
-            exposure: 1.0,
-            gamma: 1.2,
+            exposure: 0.06,
+            gamma: 2.2,
             time: elapsed as f32,
         });
 

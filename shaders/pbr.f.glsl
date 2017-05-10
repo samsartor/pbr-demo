@@ -20,7 +20,7 @@ out vec4 f_color;
 const float PI = 3.14159265359;
 
 const int LIGHT_COUNT = 5;
-const vec3 ambient = vec3(0.015, 0.015, 0.025) * 3;
+const vec3 ambient = vec3(0.015, 0.015, 0.025) * 1.5;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
@@ -80,7 +80,7 @@ void main() {
         return;
     }
 
-    vec3 albedo = texture(albedo_tex, tex).rgb;
+    vec3 albedo = pow(texture(albedo_tex, tex).rgb, vec3(2.2));
     float roughness = texture(roughness_tex, tex).r;
     float metalness = texture(metalness_tex, tex).r;
 
@@ -97,8 +97,9 @@ void main() {
 
     for (int light_i = 0; light_i < LIGHT_COUNT; light_i++) {
         float light_angle = PI * light_i * 2.0 / LIGHT_COUNT;
-        vec3 light_pos = vec3(5 * sin(light_angle), sin(time * 0.6) * 4, 5 * cos(light_angle));
-        vec3 light_color = vec3(48, 40, 24);
+        light_angle += 0.333 * time;
+        vec3 light_pos = vec3(9 * sin(light_angle), sin(time * 0.6) * 3, 9 * cos(light_angle));
+        vec3 light_color = vec3(1.0, 0.9, 0.5) * 50.;
 
         vec3 L = normalize(light_pos - pos);
         vec3 H = normalize(V + L);
@@ -125,7 +126,7 @@ void main() {
     }
 
     // AMBIENT
-    lum += albedo; //ambient * albedo; // * ao;
+    lum += ambient * albedo; // * ao;
 
     // OUT
     f_color = vec4(to_ldr(lum), 1);
