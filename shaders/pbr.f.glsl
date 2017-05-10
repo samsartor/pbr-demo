@@ -7,6 +7,7 @@ uniform sampler2D layer_b;
 uniform sampler2D albedo_tex;
 uniform sampler2D metalness_tex;
 uniform sampler2D roughness_tex;
+uniform sampler2DShadow shadow_depth;
 
 layout(std140) uniform live {
     vec4 eye_pos;
@@ -112,7 +113,13 @@ void main() {
         
     // add to outgoing radiance Lo
     float NdotL = max(dot(N, L), 0.0);                
-    vec3 lum = (kD * albedo / PI + brdf) * radiance * NdotL; 
+    vec3 lum = (kD * albedo / PI + brdf) * radiance * NdotL;
+
+    // shadows
+    vec4 light_p = light_matrix * vec4(pos, 1);
+    vec3 s = light_p.xyz / light_p.w * 0.5 + 0.5;
+    float d = texture(shadow_depth, s);
+    lum *= vec3(d);
 
     // AMBIENT
     lum += back * albedo; // * ao;

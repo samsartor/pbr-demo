@@ -1,7 +1,8 @@
 [package]
 name = "a4"
 version = "0.1.0"
-authors = ["Sam Sartor <me@samsartor.com>"]
+authors = ["Sam Sartor <ssartor@mines.edu>",
+           "Daichi Jameson <djameson@mines.edu>"]
 
 [dependencies]
 gfx = "*"

@@ -8,6 +8,7 @@ extern crate winit; // windowing library, built on/part of glutin (equiv. to GLF
 extern crate cgmath; // Math library, like glm
 
 extern crate image; // image loading
+#[macro_use]
 extern crate clap; // command-line args
 extern crate rand; // random number gen
 

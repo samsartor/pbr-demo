@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 
 use gfx;
+use gfx::format;
 
 pub use gfx_app::{ColorFormat, DepthFormat};
 
 pub type LayerFormat = [f32; 4];
 pub type PbrTex = [f32; 4];
+pub type ShadowDepthFormat = (format::D32, format::Float);
 pub type VertexSlice<R, V> = (gfx::handle::Buffer<R, V>, gfx::Slice<R>);
 
 gfx_defines!{
@@ -85,6 +87,7 @@ gfx_defines!{
         albedo: gfx::TextureSampler<PbrTex> = "albedo_tex",
         metalness: gfx::TextureSampler<PbrTex> = "metalness_tex",
         roughness: gfx::TextureSampler<PbrTex> = "roughness_tex",
+        shadow: gfx::TextureSampler<f32> = "shadow_depth",
         color: gfx::BlendTarget<LayerFormat> = ("f_color", gfx::state::ColorMask::all(), gfx::preset::blend::ADD),
     }
 
@@ -93,5 +96,11 @@ gfx_defines!{
         live: gfx::ConstantBuffer<LiveBlock> = "live",
         value: gfx::TextureSampler<LayerFormat> = "value",
         color: gfx::RenderTarget<ColorFormat> = "f_color",
+    }
+
+    pipeline shadow {
+        verts: gfx::VertexBuffer<Vtnt> = (),
+        transform: gfx::ConstantBuffer<TransformBlock> = "transform",
+        depth: gfx::DepthTarget<ShadowDepthFormat> = gfx::preset::depth::LESS_EQUAL_WRITE,
     }
 }

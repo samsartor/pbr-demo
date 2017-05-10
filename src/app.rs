@@ -51,6 +51,7 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     deferred_pso: gfx::PipelineState<R, define::deferred::Meta>,
     pbr_pso: gfx::PipelineState<R, define::pbr::Meta>,
     ldr_pso: gfx::PipelineState<R, define::ldr::Meta>,
+    shadow_pso: gfx::PipelineState<R, define::shadow::Meta>,
 
     //===============//
     // Pipeline Data //
@@ -58,6 +59,7 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     deferred_data: define::deferred::Data<R>,
     pbr_data: define::pbr::Data<R>,
     ldr_data: define::ldr::Data<R>,
+    shadow_data: define::shadow::Data<R>,
 }
 
 struct Object<R: gfx::Resources> {
@@ -70,8 +72,9 @@ struct Object<R: gfx::Resources> {
 }
 
 impl<R: gfx::Resources> Object<R> {
-    pub fn apply_to_data(&self, deferred: &mut define::deferred::Data<R>, pbr: &mut define::pbr::Data<R>) {
+    pub fn apply_to_data(&self, deferred: &mut define::deferred::Data<R>, pbr: &mut define::pbr::Data<R>, shadow: &mut define::shadow::Data<R>) {
         deferred.verts = self.mesh.0.clone();
+        shadow.verts = self.mesh.0.clone();
 
         deferred.normal = (self.normal.clone(), self.sampler.clone());
         pbr.albedo = (self.albedo.clone(), self.sampler.clone());
@@ -86,7 +89,14 @@ struct PointLight {
 }
 
 impl PointLight {
-    pub fn update<R: gfx::Resources, C: gfx::CommandBuffer<R>>(&mut self, time: f32, encoder: &mut gfx::Encoder<R, C>, pbr_data: &mut define::pbr::Data<R>) {
+    pub fn update<R: gfx::Resources, C: gfx::CommandBuffer<R>>(
+        &mut self, 
+        time: f32, 
+        encoder: &mut gfx::Encoder<R, C>, 
+        pbr_data: &mut define::pbr::Data<R>, 
+        shadow_data: &mut define::shadow::Data<R>,
+        model_mat: Matrix4<f32>)
+    {
         let theta = self.base_angle + Deg(time * 30.);
 
         let camera = ArcBall {
@@ -95,7 +105,7 @@ impl PointLight {
             phi: Deg((theta + Deg(time * 13.)).sin() * 45.),
             dist: 7.,
             projection: PerspectiveFov {
-                fovy: Deg(60.).into(),
+                fovy: Deg(30.).into(),
                 aspect: 1., 
                 near: 0.1, far: 100.
             },
@@ -105,7 +115,13 @@ impl PointLight {
         self.block.matrix = (camera.get_proj() * camera.get_view()).into();
         self.block.pos = camera.get_eye().to_vec().extend(1.).into();
 
+        encoder.clear_depth(&shadow_data.depth, camera.projection.far);
         encoder.update_constant_buffer(&pbr_data.light, &self.block);
+        encoder.update_constant_buffer(&shadow_data.transform, &define::TransformBlock {
+            model: model_mat.into(),
+            view: camera.get_view().into(),
+            proj: camera.get_proj().into(),
+        });
     }
 }
 
@@ -170,8 +186,7 @@ fn get_args() -> (Vec<PathBuf>, usize, [f32; 4], [f32; 4]) {
     use clap::{App, Arg};
 
     let args = App::new("PBR Demo")
-        .author("Sam Sartor <ssartor@mines.edu>")
-        .author("Daichi Jameson <djameson@mines.edu>")
+        .author(crate_authors!())
         .arg(Arg::with_name("object")
             .short("o")
             .long("objects")
@@ -215,9 +230,12 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn new<F>(factory: &mut F, _: gfx_app::shade::Backend, window_targets: gfx_app::WindowTargets<R>) -> Self
     where F: gfx_app::Factory<R, CommandBuffer=C>,
     {
+        // read args
         let (directories, light_count, mut initial_ambient, mut initial_light) = get_args();
+        // inital window size
         let dim = window_targets.color.get_dimensions();
 
+        // load resources
         let sampler = factory.create_sampler(texture::SamplerInfo::new(
             texture::FilterMethod::Bilinear,
             texture::WrapMode::Tile,
@@ -236,12 +254,40 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             }
         }).collect();
 
+        // create shadow buffer
+        let shadow_tex = {
+            let kind = texture::Kind::D2(512, 512, texture::AaMode::Single);
+            let bind = gfx::SHADER_RESOURCE | gfx::DEPTH_STENCIL;
+            let ctype = Some(gfx::format::ChannelType::Float);
+
+            factory.create_texture(kind, 1, bind, gfx::memory::Usage::Data, ctype).unwrap()
+        };
+
+        let shadow_tex_sampler = {
+            let resource = factory.view_texture_as_shader_resource::<define::ShadowDepthFormat>(
+                &shadow_tex, (0, 0), gfx::format::Swizzle::new()).unwrap();
+
+            let mut sinfo = texture::SamplerInfo::new(
+                texture::FilterMethod::Bilinear,
+                texture::WrapMode::Clamp
+            );
+
+            sinfo.comparison = Some(gfx::state::Comparison::LessEqual);
+            (resource, factory.create_sampler(sinfo))
+        };
+
+        let shadow_depth_target = factory.view_texture_as_depth_stencil(
+            &shadow_tex, 0, None,
+            texture::DepthStencilFlags::empty()).unwrap();
+
+        // create gbuffer
         let layer_a = build_layer(factory, dim.0, dim.1);
         let layer_b = build_layer(factory, dim.0, dim.1);
         let value = build_layer(factory, dim.0, dim.1);
 
         let (_, _, depth) = factory.create_depth_stencil(dim.0, dim.1).unwrap();
 
+        // create pipeline state objects
         let deferred_pso = {
             let shaders = shaders::deferred(factory).unwrap();
             factory.create_pipeline_state(
@@ -272,6 +318,25 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             ).unwrap()
         };
 
+        let shadow_pso = {
+            use gfx::state::*;
+
+            let shaders = shaders::shadow(factory).unwrap();
+            factory.create_pipeline_state(
+                &shaders,
+                gfx::Primitive::TriangleList,
+                gfx::state::Rasterizer {
+                    front_face: FrontFace::CounterClockwise,
+                    cull_face: CullFace::Front,
+                    method: RasterMethod::Fill,
+                    offset: None,
+                    samples: None,
+                },
+                define::shadow::new()
+            ).unwrap()
+        };
+
+        // create pipeline data
         let gbuf_sampler = factory.create_sampler(texture::SamplerInfo::new(
             texture::FilterMethod::Scale,
             texture::WrapMode::Clamp,
@@ -307,6 +372,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             albedo: (objects[0].albedo.clone(), sampler.clone()),
             metalness: (objects[0].metalness.clone(), sampler.clone()),
             roughness: (objects[0].roughness.clone(), sampler.clone()),
+            shadow: shadow_tex_sampler,
             color: value.target.clone(),  
         };
 
@@ -317,6 +383,13 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             color: window_targets.color.clone(),  
         };
 
+        let shadow_data = define::shadow::Data {
+            verts: objects[0].mesh.0.clone(),
+            transform: factory.create_constant_buffer(1),
+            depth: shadow_depth_target,
+        };
+
+        // create lights
         initial_ambient[3] *= 1.5 / light_count as f32;
         initial_light[3] *= 250. / light_count as f32;
 
@@ -339,6 +412,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 },
             }).collect();
 
+        // put it all together
         App {
             mouse_pos: None,
             show_floor: true,
@@ -371,10 +445,12 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             deferred_pso: deferred_pso,
             pbr_pso: pbr_pso,
             ldr_pso: ldr_pso,
+            shadow_pso: shadow_pso,
 
             deferred_data: deferred_data,
             pbr_data: pbr_data,
             ldr_data: ldr_data,
+            shadow_data: shadow_data,
         }
     }
 
@@ -401,8 +477,10 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         self.encoder.clear(&self.deferred_data.layer_b, [0.; 4]);
         self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
 
+        let model_mat = Matrix4::identity();
+
         self.encoder.update_constant_buffer(&self.deferred_data.transform, &define::TransformBlock {
-            model: Matrix4::identity().into(),
+            model: model_mat.into(),
             view: camera.get_view().into(),
             proj: camera.get_proj().into(),
         });
@@ -419,7 +497,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         });
 
         for l in &mut self.lights {
-            l.update(elapsed as f32, &mut self.encoder, &mut self.pbr_data);
+            l.update(elapsed as f32, &mut self.encoder, &mut self.pbr_data, &mut self.shadow_data, model_mat);
+            self.encoder.draw(&obj.mesh.1, &self.shadow_pso, &self.shadow_data);
             self.encoder.draw(&self.quad.1, &self.pbr_pso, &self.pbr_data);
         }
 
@@ -450,7 +529,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                     (Pressed, M) => {
                         self.current = (self.current + 1) % self.objects.len();
                         self.objects[self.current]
-                            .apply_to_data(&mut self.deferred_data, &mut self.pbr_data);
+                            .apply_to_data(&mut self.deferred_data, &mut self.pbr_data, &mut self.shadow_data);
                     },
                     (Pressed, C) => {
                         let init = self.inital_color;
