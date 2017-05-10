@@ -5,9 +5,10 @@ authors = ["Sam Sartor <me@samsartor.com>"]
 
 [dependencies]
 gfx = "*"
-winit = "~0.5"
+winit = "*"
 gfx_app = "*"
 gfx_window_glutin = "*"
 cgmath = "*"
 image = "*"
 clap = "*"
+rand = "*"

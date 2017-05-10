@@ -9,6 +9,7 @@ extern crate cgmath; // Math library, like glm
 
 extern crate image; // image loading
 extern crate clap; // command-line args
+extern crate rand; // random number gen
 
 mod shaders; // shaders.rs
 mod camera; // camera.rs

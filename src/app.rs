@@ -1,5 +1,5 @@
 use cgmath::prelude::*;
-use cgmath::{Point3, Matrix4, Deg, PerspectiveFov};
+use cgmath::{Point3, Matrix4, Deg, PerspectiveFov, vec3};
 use image;
 use gfx;
 use gfx::traits::{FactoryExt};
@@ -15,6 +15,7 @@ use shaders;
 use define::{self, VertexSlice};
 use camera::{Camera, ArcBall};
 use wavefront::{open_obj};
+use rand::{Rng, ThreadRng, thread_rng};
 
 pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     //=======//
@@ -27,8 +28,11 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     cam: ArcBall<PerspectiveFov<f32>, Deg<f32>>,
     start_time: Instant,
     exposure: f32,
+    gamma: f32,
     current: usize,
     lights: Vec<PointLight>,
+    rng: ThreadRng,
+    inital_color: (bool, [f32; 4], [f32; 4]),
 
     //===========//
     // App Stuff //
@@ -144,7 +148,25 @@ fn load_image<R, C, F, T, P>(factory: &mut F, path: P) -> (Texture<R, T::Surface
     ).expect("Could not upload texture")  // TODO: Result
 }
 
-fn get_args() -> (Vec<PathBuf>, usize) {
+fn get_color(mut arg: ::clap::Values) -> Result<[f32; 4], &'static str> {
+    let c = arg.next().ok_or("No color provided")?;
+    if c.len() != 6 { return Err("Invalid color format (not 6 chars)") }
+    let z = u64::from_str_radix(c, 16).map_err(|_| "Invalid color format (not hex)")?;
+    let mut rgb = [
+        ((z >> 16) & 0xFF) as f32 / 255.,
+        ((z >> 8 ) & 0xFF) as f32 / 255.,
+        ( z        & 0xFF) as f32 / 255.,
+        1.,
+    ];
+
+    if let Some(v) = arg.next() {
+        rgb[3] *= v.parse().map_err(|_| "Second parameter is not a float")?
+    }
+
+    Ok(rgb)
+}
+
+fn get_args() -> (Vec<PathBuf>, usize, [f32; 4], [f32; 4]) {
     use clap::{App, Arg};
 
     let args = App::new("PBR Demo")
@@ -161,11 +183,27 @@ fn get_args() -> (Vec<PathBuf>, usize) {
             .long("lights")
             .help("how many point lights")
             .default_value("5"))
+        .arg(Arg::with_name("ambient")
+            .short("a")
+            .long("ambient")
+            .help("ambient color")
+            .min_values(1)
+            .max_values(2)
+            .default_value("4d479b"))
+        .arg(Arg::with_name("color")
+            .short("c")
+            .long("color")
+            .help("light color")
+            .min_values(1)
+            .max_values(2)
+            .default_value("e0bd91"))
     .get_matches();
 
     (
         args.values_of("object").unwrap().map(|v| PathBuf::from(v)).collect(),
-        args.value_of("lights").map(|v| v.parse()).unwrap().unwrap(),
+        args.value_of("lights").map(|v| v.parse()).unwrap().expect("Could not parse light count"),
+        get_color(args.values_of("ambient").unwrap()).expect("Could not parse ambient color arg"),
+        get_color(args.values_of("color").unwrap()).expect("Could not parse light color arg"),
     )
 
 }
@@ -177,7 +215,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn new<F>(factory: &mut F, _: gfx_app::shade::Backend, window_targets: gfx_app::WindowTargets<R>) -> Self
     where F: gfx_app::Factory<R, CommandBuffer=C>,
     {
-        let (directories, light_count) = get_args();
+        let (directories, light_count, mut initial_ambient, mut initial_light) = get_args();
         let dim = window_targets.color.get_dimensions();
 
         let sampler = factory.create_sampler(texture::SamplerInfo::new(
@@ -279,7 +317,14 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             color: window_targets.color.clone(),  
         };
 
-        let per_ambient = [0.015, 0.015, 0.025, 1.5 / light_count as f32];
+        initial_ambient[3] *= 1.5 / light_count as f32;
+        initial_light[3] *= 250. / light_count as f32;
+
+        let inital_color = (
+            true,
+            initial_ambient,
+            initial_light,
+        );
 
         let lights = (0..light_count)
             .map(|i| Deg(i as f32 * 360. / light_count as f32))
@@ -288,8 +333,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 block: define::LightBlock {
                     matrix: Matrix4::identity().into(),
                     pos: [0.; 4],
-                    ambient: per_ambient,
-                    color: [1.0, 0.9, 0.5, 50.],
+                    ambient: inital_color.1,
+                    color: inital_color.2,
 
                 },
             }).collect();
@@ -312,8 +357,11 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             },
             start_time: Instant::now(),
             exposure: 0.1,
+            gamma: 2.2,
             current: 0,
             lights: lights,
+            rng: thread_rng(),
+            inital_color: inital_color,
 
             encoder: factory.create_encoder(),
 
@@ -366,7 +414,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
             exposure: self.exposure,
-            gamma: 2.2,
+            gamma: self.gamma,
             time: elapsed as f32,
         });
 
@@ -397,10 +445,38 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                     (Pressed, F) => self.show_floor = !self.show_floor,
                     (Pressed, Up) => self.exposure *= 1.1,
                     (Pressed, Down) => self.exposure *= 0.9,
+                    (Pressed, Right) => self.gamma *= 1.05,
+                    (Pressed, Left) => self.gamma *= 0.95,
                     (Pressed, M) => {
                         self.current = (self.current + 1) % self.objects.len();
                         self.objects[self.current]
                             .apply_to_data(&mut self.deferred_data, &mut self.pbr_data);
+                    },
+                    (Pressed, C) => {
+                        let init = self.inital_color;
+                        if init.0 {
+                            let count = self.lights.len() as f32;
+
+                            let ambient = vec3(self.rng.next_f32(), self.rng.next_f32(), self.rng.next_f32())
+                                .normalize()
+                                .extend(0.02 / count)
+                                .into();
+
+                            for l in &mut self.lights {
+                                l.block.ambient = ambient;
+                                l.block.color = vec3(self.rng.next_f32(), self.rng.next_f32(), self.rng.next_f32())
+                                    .normalize()
+                                    .extend(350. / count)
+                                    .into();
+                            }
+                        } else {
+                            for l in &mut self.lights {
+                                l.block.ambient = init.1;
+                                l.block.color = init.2;
+                            }
+                        }
+
+                        self.inital_color.0 = !init.0;
                     },
                     _ => ()
                 }

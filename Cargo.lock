@@ -8,6 +8,7 @@ dependencies = [
  "gfx_app 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gfx_window_glutin 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "winit 0.5.11 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
