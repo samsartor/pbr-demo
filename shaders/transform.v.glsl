@@ -21,6 +21,11 @@ in vec3 a_btn;
 out vec3 v_bitan;
 #endif
 
+#ifdef TEX
+in vec2 a_tex;
+out vec2 v_tex;
+#endif
+
 void main() {
     vec4 p = model * vec4(a_pos, 1);
     v_pos = p.xyz;
@@ -32,6 +37,11 @@ void main() {
     #ifdef TAN
     v_tan = normalize((model * vec4(a_tan, 0)).xyz);
     v_bitan = normalize((model * vec4(a_btn, 0)).xyz);
+    #endif
+
+    #ifdef TEX
+    v_tex = a_tex;
+    v_tex.y = 1 - v_tex.y;
     #endif
 
     #ifdef VIEWPROJ

@@ -11,7 +11,6 @@ extern crate image;
 
 mod shaders; // shaders.rs
 mod camera; // camera.rs
-mod ctrpts;
 mod define;
 mod app;
 mod wavefront;

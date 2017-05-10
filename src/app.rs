@@ -1,5 +1,5 @@
 use cgmath::prelude::*;
-use cgmath::{Point3, Matrix4, Deg, PerspectiveFov, vec3};
+use cgmath::{Point3, Matrix4, Deg, PerspectiveFov};
 use image;
 use gfx;
 use gfx::traits::{FactoryExt};
@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use shaders;
 use define::{self, VertexSlice};
-use camera::{Camera, ArcBall, new_perspective};
+use camera::{Camera, ArcBall};
 use wavefront::{open_obj};
 
 const AMBIENT: [f32; 4] = [0.03, 0.03, 0.03, 1.];
@@ -57,10 +57,13 @@ struct ViewPair<R: gfx::Resources, T: gfx::format::Formatted> {
     target: gfx::handle::RenderTargetView<R, T>,
 }
 
-fn build_g_buf<R, C, F>(factory: &mut F, w: texture::Size, h: texture::Size) -> ViewPair<R, define::GBuffLayerFormat>
+fn build_g_buf<R, C, F, T>(factory: &mut F, w: texture::Size, h: texture::Size) -> ViewPair<R, T>
     where F: gfx_app::Factory<R, CommandBuffer=C>,
           R: gfx::Resources + 'static,
           C: gfx::CommandBuffer<R> + Send + 'static,
+          T: format::TextureFormat,
+          T::Surface: format::RenderSurface,
+          T::Channel: format::RenderChannel,
 {
     let (_ , srv, rtv) = factory.create_render_target(w, h).unwrap();
     ViewPair {
@@ -109,6 +112,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         let layer_a = build_g_buf(factory, dim.0, dim.1);
         let layer_b = build_g_buf(factory, dim.0, dim.1);
 
+        let (_, _, depth) = factory.create_depth_stencil(dim.0, dim.1).unwrap();
+
         let mesh_deferred_pso = {
             let shaders = shaders::deferred(factory).unwrap();
             factory.create_pipeline_state(
@@ -145,7 +150,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             layer_a: layer_a.target.clone(),
             layer_b: layer_b.target.clone(),
             normal_tex: (normal_tex.1.clone(), sampler.clone()),
-            depth: window_targets.depth.clone()
+            depth: depth.clone()
         };
 
         let quad = {
@@ -205,10 +210,6 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn render<D>(&mut self, device: &mut D) where
         D: gfx::Device<Resources=R, CommandBuffer=C>
     {
-        // clear screen
-        self.encoder.clear(&self.pbr_data.color, AMBIENT);
-        self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
-
         // camera stuff
         self.cam.theta += Deg(self.orbit_diff.0 * 1.);
         self.cam.phi += Deg(self.orbit_diff.1 * 1.);
@@ -222,6 +223,12 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         let elapsed = self.start_time.elapsed();
         let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 * 1e-9f64;
+
+        // clear screen
+        self.encoder.clear(&self.pbr_data.color, AMBIENT);
+        self.encoder.clear(&self.deferred_data.layer_a, [0.; 4]);
+        self.encoder.clear(&self.deferred_data.layer_b, [0.; 4]);
+        self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
 
         self.encoder.update_constant_buffer(&self.deferred_data.transform, &define::TransformBlock {
             model: Matrix4::identity().into(),
@@ -313,11 +320,13 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         self.deferred_data.layer_a = layer_a.target.clone();
         self.deferred_data.layer_b = layer_b.target.clone();
 
+        let (_, _, depth) = factory.create_depth_stencil(w, h).unwrap();
+        self.deferred_data.depth = depth;
+
         self.pbr_data.layer_a.0 = layer_a.resource.clone();
         self.pbr_data.layer_b.0 = layer_b.resource.clone();
 
         self.pbr_data.color = window_targets.color.clone();
-        self.deferred_data.depth = window_targets.depth.clone();
 
         self.cam.projection.aspect = window_targets.aspect_ratio;
     }

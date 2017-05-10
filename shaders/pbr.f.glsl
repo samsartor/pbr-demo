@@ -125,7 +125,7 @@ void main() {
     }
 
     // AMBIENT
-    lum += ambient * albedo; // * ao;
+    lum += albedo; //ambient * albedo; // * ao;
 
     // OUT
     f_color = vec4(to_ldr(lum), 1);

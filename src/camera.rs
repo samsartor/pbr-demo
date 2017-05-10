@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 use cgmath::prelude::*;
-use cgmath::{Perspective, PerspectiveFov, Ortho, Rad, Matrix4, Point3, Vector3, Angle, vec4, vec3};
+use cgmath::{Perspective, PerspectiveFov, Ortho, Rad, Matrix4, Point3, Vector3, Angle, vec3};
 
 pub type BasicPerspCamera = BasicCamera<Perspective<f32>>;
 pub type BasicOrthoCamera = BasicCamera<Ortho<f32>>;

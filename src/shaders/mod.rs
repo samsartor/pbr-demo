@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[macro_use]
 mod util;
 
@@ -10,6 +12,7 @@ shader!(deferred {
             vertex: file("shaders/transform.v.glsl")
                 .define("VIEWPROJ")
                 .define("TAN")
+                .define("TEX")
                 .define("NORM"),
             fragment: file("shaders/deferred.f.glsl")
         });

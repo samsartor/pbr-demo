@@ -1,9 +1,9 @@
+#![allow(dead_code)]
+
 use gfx;
-use gfx::format::*;
 
 pub use gfx_app::{ColorFormat, DepthFormat};
 
-pub type ShadowDepthFormat = (D32, Float);
 pub type GBuffLayerFormat = [f32; 4];
 pub type PbrTex = [f32; 4];
 pub type VertexSlice<R, V> = (gfx::handle::Buffer<R, V>, gfx::Slice<R>);
@@ -84,11 +84,5 @@ gfx_defines!{
         metalness: gfx::TextureSampler<PbrTex> = "metalness_tex",
         roughness: gfx::TextureSampler<PbrTex> = "roughness_tex",
         color: gfx::RenderTarget<ColorFormat> = "f_color",
-    }
-
-    pipeline shadow {
-        verts: gfx::VertexBuffer<Vtnt> = (),
-        transform: gfx::ConstantBuffer<TransformBlock> = "transform",
-        depth: gfx::DepthTarget<ShadowDepthFormat> = gfx::preset::depth::LESS_EQUAL_WRITE,
     }
 }
