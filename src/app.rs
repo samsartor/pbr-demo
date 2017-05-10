@@ -29,6 +29,7 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     cam: ArcBall<PerspectiveFov<f32>, Deg<f32>>,
     start_time: Instant,
     exposure: f32,
+    current: usize,
 
     //===========//
     // App Stuff //
@@ -38,13 +39,13 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     //========//
     // Models //
     //========//
-    mesh: VertexSlice<R, define::Vtnt>,
+    objects: Vec<Object<R>>,
     quad: VertexSlice<R, define::V>,
 
     //===========//
     // Pipelines //
     //===========//
-    mesh_deferred_pso: gfx::PipelineState<R, define::deferred::Meta>,
+    deferred_pso: gfx::PipelineState<R, define::deferred::Meta>,
     pbr_pso: gfx::PipelineState<R, define::pbr::Meta>,
 
     //===============//
@@ -52,6 +53,26 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     //===============//
     deferred_data: define::deferred::Data<R>,
     pbr_data: define::pbr::Data<R>,
+}
+
+struct Object<R: gfx::Resources> {
+    pub mesh: VertexSlice<R, define::Vtnt>,
+    pub sampler: Sampler<R>,
+    pub normal: ShaderResourceView<R, [f32; 4]>,
+    pub albedo: ShaderResourceView<R, [f32; 4]>,
+    pub roughness: ShaderResourceView<R, [f32; 4]>,
+    pub metalness: ShaderResourceView<R, [f32; 4]>,
+}
+
+impl<R: gfx::Resources> Object<R> {
+    pub fn apply_to_data(&self, deferred: &mut define::deferred::Data<R>, pbr: &mut define::pbr::Data<R>) {
+        deferred.verts = self.mesh.0.clone();
+
+        deferred.normal = (self.normal.clone(), self.sampler.clone());
+        pbr.albedo = (self.albedo.clone(), self.sampler.clone());
+        pbr.roughness = (self.roughness.clone(), self.sampler.clone());
+        pbr.metalness = (self.metalness.clone(), self.sampler.clone());
+    }
 }
 
 struct ViewPair<R: gfx::Resources, T: gfx::format::Formatted> {
@@ -93,7 +114,7 @@ fn load_image<R, C, F, T, P>(factory: &mut F, path: P) -> (Texture<R, T::Surface
     ).expect("Could not upload texture")  // TODO: Result
 }
 
-fn get_args() -> PathBuf {
+fn get_args() -> Vec<PathBuf> {
     use clap::{App, Arg};
 
     let args = App::new("PBR Demo")
@@ -101,13 +122,13 @@ fn get_args() -> PathBuf {
         .author("Daichi Jameson <djameson@mines.edu>")
         .arg(Arg::with_name("object")
             .short("o")
-            .long("object")
-            .help("directory containing model.obj and PBR textures")
+            .long("objects")
+            .help("list of directories, each one containing model.obj and several PBR textures")
             .required(true)
-            .takes_value(true))
+            .min_values(1))
     .get_matches();
 
-    (PathBuf::from(args.value_of("object").unwrap()))
+    args.values_of("object").unwrap().map(|v| PathBuf::from(v)).collect()
 }
 
 impl<R, C> ApplicationBase<R, C> for App<R, C> where
@@ -117,25 +138,33 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn new<F>(factory: &mut F, _: gfx_app::shade::Backend, window_targets: gfx_app::WindowTargets<R>) -> Self
     where F: gfx_app::Factory<R, CommandBuffer=C>,
     {
-        let directory = get_args();
-
+        let directories = get_args();
         let dim = window_targets.color.get_dimensions();
 
-        let mesh = open_obj(directory.join("model.obj"), factory).unwrap();
+        let sampler = factory.create_sampler(texture::SamplerInfo::new(
+            texture::FilterMethod::Bilinear,
+            texture::WrapMode::Tile,
+        ));
 
-        use self::format::*;
+        let objects: Vec<Object<R>> = directories.into_iter().map(|dir| {
+            use self::format::*;
 
-        let normal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("normal.png"));
-        let albedo_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("albedo.png"));
-        let metal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("metalness.png"));
-        let rough_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("roughness.png"));
+            Object {
+                mesh: open_obj(dir.join("model.obj"), factory).unwrap(),
+                normal: load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, dir.join("normal.png")).1,
+                albedo: load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, dir.join("albedo.png")).1,
+                metalness: load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, dir.join("metalness.png")).1,
+                roughness: load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, dir.join("roughness.png")).1,
+                sampler: sampler.clone(),
+            }
+        }).collect();
 
         let layer_a = build_g_buf(factory, dim.0, dim.1);
         let layer_b = build_g_buf(factory, dim.0, dim.1);
 
         let (_, _, depth) = factory.create_depth_stencil(dim.0, dim.1).unwrap();
 
-        let mesh_deferred_pso = {
+        let deferred_pso = {
             let shaders = shaders::deferred(factory).unwrap();
             factory.create_pipeline_state(
                 &shaders,
@@ -160,17 +189,12 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             texture::WrapMode::Clamp,
         ));
 
-        let sampler = factory.create_sampler(texture::SamplerInfo::new(
-            texture::FilterMethod::Bilinear,
-            texture::WrapMode::Tile,
-        ));
-
         let deferred_data = define::deferred::Data {
-            verts: mesh.0.clone(),
+            verts: objects[0].mesh.0.clone(),
             transform: factory.create_constant_buffer(1),
             layer_a: layer_a.target.clone(),
             layer_b: layer_b.target.clone(),
-            normal_tex: (normal_tex.1.clone(), sampler.clone()),
+            normal: (objects[0].normal.clone(), sampler.clone()),
             depth: depth.clone()
         };
 
@@ -191,9 +215,9 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             live: factory.create_constant_buffer(1),
             layer_a: (layer_a.resource.clone(), gbuf_sampler.clone()),
             layer_b: (layer_b.resource.clone(), gbuf_sampler.clone()),
-            albedo: (albedo_tex.1.clone(), sampler.clone()),
-            metalness: (metal_tex.1.clone(), sampler.clone()),
-            roughness: (rough_tex.1.clone(), sampler.clone()),
+            albedo: (objects[0].albedo.clone(), sampler.clone()),
+            metalness: (objects[0].metalness.clone(), sampler.clone()),
+            roughness: (objects[0].roughness.clone(), sampler.clone()),
             color: window_targets.color.clone(),  
         };
 
@@ -215,13 +239,14 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             },
             start_time: Instant::now(),
             exposure: 0.1,
+            current: 0,
 
             encoder: factory.create_encoder(),
 
-            mesh: mesh,
+            objects: objects,
             quad: quad,
 
-            mesh_deferred_pso: mesh_deferred_pso,
+            deferred_pso: deferred_pso,
             pbr_pso: pbr_pso,
 
             deferred_data: deferred_data,
@@ -258,7 +283,9 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             proj: camera.get_proj().into(),
         });
 
-        self.encoder.draw(&self.mesh.1, &self.mesh_deferred_pso, &self.deferred_data);
+        let obj = &self.objects[self.current];
+
+        self.encoder.draw(&obj.mesh.1, &self.deferred_pso, &self.deferred_data);
 
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
@@ -289,7 +316,11 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                     (Pressed, F) => self.show_floor = !self.show_floor,
                     (Pressed, Up) => self.exposure *= 1.1,
                     (Pressed, Down) => self.exposure *= 0.9,
-                    // (Pressed, M) => self.model_index = (self.model_index + 1) % self.models.len(),
+                    (Pressed, M) => {
+                        self.current = (self.current + 1) % self.objects.len();
+                        self.objects[self.current]
+                            .apply_to_data(&mut self.deferred_data, &mut self.pbr_data);
+                    },
                     _ => ()
                 }
             },

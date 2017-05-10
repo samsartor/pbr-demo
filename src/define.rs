@@ -68,7 +68,7 @@ gfx_defines!{
     pipeline deferred {
         verts: gfx::VertexBuffer<Vtnt> = (),
         transform: gfx::ConstantBuffer<TransformBlock> = "transform",
-        normal_tex: gfx::TextureSampler<PbrTex> = "normal_tex",
+        normal: gfx::TextureSampler<PbrTex> = "normal_tex",
         layer_a: gfx::RenderTarget<GBuffLayerFormat> = "layer_a",
         layer_b: gfx::RenderTarget<GBuffLayerFormat> = "layer_b",
         depth: gfx::DepthTarget<DepthFormat> = gfx::preset::depth::LESS_EQUAL_WRITE,
