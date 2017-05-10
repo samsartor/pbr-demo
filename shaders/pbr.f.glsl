@@ -64,7 +64,7 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 
 vec3 to_ldr(vec3 lum) {
     vec3 color = vec3(1.0) - exp(-lum * exposure);
-    return color; //pow(color, vec3(1.0 / gamma)); // Not sure why this over-gammas it
+    return pow(color, vec3(1.0 / gamma)); // Not sure why this over-gammas it
 }
 
 void main() {

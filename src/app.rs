@@ -9,6 +9,7 @@ use gfx::handle::*;
 use gfx_app::{self, ApplicationBase};
 use winit::{self, Event};
 use std::time::Instant;
+use std::path::{Path, PathBuf};
 
 use shaders;
 use define::{self, VertexSlice};
@@ -76,7 +77,7 @@ fn load_image<R, C, F, T, P>(factory: &mut F, path: P) -> (Texture<R, T::Surface
     where F: gfx_app::Factory<R, CommandBuffer=C>,
           R: gfx::Resources + 'static,
           C: gfx::CommandBuffer<R> + Send + 'static,
-          P: AsRef<::std::path::Path>,
+          P: AsRef<Path>,
           T: format::TextureFormat,
 {
     use std::io::*;
@@ -91,6 +92,23 @@ fn load_image<R, C, F, T, P>(factory: &mut F, path: P) -> (Texture<R, T::Surface
     ).expect("Could not upload texture")  // TODO: Result
 }
 
+fn get_args() -> PathBuf {
+    use clap::{App, Arg};
+
+    let args = App::new("PBR Demo")
+        .author("Sam Sartor <ssartor@mines.edu>")
+        .author("Daichi Jameson <djameson@mines.edu>")
+        .arg(Arg::with_name("object")
+            .short("o")
+            .long("object")
+            .help("directory containing model.obj and PBR textures")
+            .required(true)
+            .takes_value(true))
+    .get_matches();
+
+    (PathBuf::from(args.value_of("object").unwrap()))
+}
+
 impl<R, C> ApplicationBase<R, C> for App<R, C> where
     R: gfx::Resources + 'static,
     C: gfx::CommandBuffer<R> + Send + 'static,
@@ -98,16 +116,18 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     fn new<F>(factory: &mut F, _: gfx_app::shade::Backend, window_targets: gfx_app::WindowTargets<R>) -> Self
     where F: gfx_app::Factory<R, CommandBuffer=C>,
     {
+        let directory = get_args();
+
         let dim = window_targets.color.get_dimensions();
 
-        let mesh = open_obj("teapot.obj", factory).unwrap();
+        let mesh = open_obj(directory.join("model.obj"), factory).unwrap();
 
         use self::format::*;
 
-        let normal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, "teapot_wood/normal.png");
-        let albedo_tex = load_image::<_, _, _, (R8_G8_B8_A8, Srgb), _>(factory, "teapot_wood/albedo.png");
-        let metal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, "teapot_wood/metalness.png");
-        let rough_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, "teapot_wood/roughness.png");
+        let normal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("normal.png"));
+        let albedo_tex = load_image::<_, _, _, (R8_G8_B8_A8, Srgb), _>(factory, directory.join("albedo.png"));
+        let metal_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("metalness.png"));
+        let rough_tex = load_image::<_, _, _, (R8_G8_B8_A8, Unorm), _>(factory, directory.join("roughness.png"));
 
         let layer_a = build_g_buf(factory, dim.0, dim.1);
         let layer_b = build_g_buf(factory, dim.0, dim.1);
@@ -241,7 +261,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
             exposure: 1.0,
-            gamma: 2.2,
+            gamma: 1.2,
             time: elapsed as f32,
         });
 

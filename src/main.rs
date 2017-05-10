@@ -2,12 +2,13 @@
 
 #[macro_use]
 extern crate gfx; // Safe (Rust-friendly) graphics
-extern crate gfx_app;
-extern crate winit;
+extern crate gfx_app; // easy main loop/other window stuff
+extern crate winit; // windowing library, built on/part of glutin (equiv. to GLFW)
 
 extern crate cgmath; // Math library, like glm
 
-extern crate image;
+extern crate image; // image loading
+extern crate clap; // command-line args
 
 mod shaders; // shaders.rs
 mod camera; // camera.rs
