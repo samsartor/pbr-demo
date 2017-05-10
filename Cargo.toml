@@ -1,5 +1,5 @@
 [package]
-name = "a4"
+name = "pbr-demo"
 version = "0.1.0"
 authors = ["Sam Sartor <ssartor@mines.edu>",
            "Daichi Jameson <djameson@mines.edu>"]

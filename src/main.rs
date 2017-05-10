@@ -1,5 +1,3 @@
-#![feature(slice_patterns)]
-
 #[macro_use]
 extern crate gfx; // Safe (Rust-friendly) graphics
 extern crate gfx_app; // easy main loop/other window stuff

@@ -1,5 +1,5 @@
 [root]
-name = "a4"
+name = "pbr-demo"
 version = "0.1.0"
 dependencies = [
  "cgmath 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",

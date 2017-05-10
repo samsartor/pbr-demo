@@ -22,7 +22,6 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     // Input //
     //=======//
     mouse_pos: Option<(i32, i32)>,
-    show_floor: bool,
     orbit_diff: (f32, f32, f32),
     left_down: bool,
     cam: ArcBall<PerspectiveFov<f32>, Deg<f32>>,
@@ -394,7 +393,6 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         // put it all together
         App {
             mouse_pos: None,
-            show_floor: true,
             orbit_diff: (0., 0., 0.),
             left_down: false,
             cam: ArcBall {
@@ -474,7 +472,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             time: elapsed as f32,
         });
 
-                let lights = self.lights.iter().map(|l| (l.animate_camera(elapsed as f32), &l.color, &l.ambient));
+        let lights = self.lights.iter().map(|l| (l.animate_camera(elapsed as f32), &l.color, &l.ambient));
         for (ref cam, color, ambient) in lights {
             self.encoder.update_constant_buffer(&self.shadow_data.transform, &define::TransformBlock {
                 model: model_mat.into(),
@@ -516,7 +514,6 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 use winit::VirtualKeyCode::*;
 
                 match (state, code) {
-                    (Pressed, F) => self.show_floor = !self.show_floor,
                     (Pressed, Up) => self.exposure *= 1.1,
                     (Pressed, Down) => self.exposure *= 0.9,
                     (Pressed, Right) => self.gamma *= 1.05,

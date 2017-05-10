@@ -273,13 +273,11 @@ pub fn load_obj<V: WavefrontVertex, R: BufRead>(read: R) -> Result<WavefrontMesh
                 };
 
                 if V::requires_edges() {
-                    let tri = match &triv[..] {
-                        &[a, b, c] => {
-                            if a == b || b == c || c == a { return Err(linen); } // indicies must be different
-                            (&verts[a as usize], &verts[b as usize], &verts[c as usize])
-                        },
-                        _ => return Err(linen), // there must be 3 indicies
-                    };
+                    if triv.len() != 3 { return Err(linen) }
+                    let (a, b, c) = (triv[0], triv[1], triv[2]);
+                    
+                    if a == b || b == c || c == a { return Err(linen); } // indicies must be different
+                    let tri = (&verts[a as usize], &verts[b as usize], &verts[c as usize]);
 
                     let tri = unsafe {
                         (&mut *(tri.0 as *const V as *mut V),
