@@ -18,7 +18,7 @@ mod define;
 mod app;
 mod wavefront;
 
-pub const DEFAULT_SIZE: (u32, u32) = (512, 512);
+pub const DEFAULT_SIZE: (u32, u32) = (1024, 1024);
 
 fn main() {
     let wb = winit::WindowBuilder::new()

@@ -3,13 +3,6 @@
 use cgmath::prelude::*;
 use cgmath::{Perspective, PerspectiveFov, Ortho, Rad, Matrix4, Point3, Vector3, Angle, vec3};
 
-pub type BasicPerspCamera = BasicCamera<Perspective<f32>>;
-pub type BasicOrthoCamera = BasicCamera<Ortho<f32>>;
-pub type BasicCustomCamera = BasicCamera<CustomProjection>;
-pub type DirectPerspCamera = DirectCamera<Perspective<f32>>;
-pub type DirectOrthoCamera = DirectCamera<Ortho<f32>>;
-pub type DirectCustomCamera = DirectCamera<CustomProjection>;
-
 pub trait Camera {
     fn get_eye(&self) -> Point3<f32>;
     fn get_view(&self) -> Matrix4<f32>;
@@ -91,7 +84,7 @@ pub fn new_perspective(eye: Point3<f32>,
                        fovy: Rad<f32>,
                        near: f32,
                        far: f32)
-                       -> BasicPerspCamera {
+                       -> BasicCamera<Perspective<f32>> {
     BasicCamera {
         eye: eye,
         target: target,
@@ -109,7 +102,7 @@ pub fn new_orthographic(eye: Point3<f32>,
                         bottom: f32,
                         near: f32,
                         far: f32)
-                        -> BasicOrthoCamera {
+                        -> BasicCamera<Ortho<f32>> {
     BasicCamera {
         eye: eye,
         target: target,
@@ -176,7 +169,7 @@ pub fn new_direct_custom(eye: Matrix4<f32>,
                          proj: Matrix4<f32>,
                          near: f32,
                          far: f32)
-                         -> DirectCustomCamera {
+                         -> DirectCamera<CustomProjection> {
     DirectCamera {
         eye: eye,
         projection: CustomProjection {

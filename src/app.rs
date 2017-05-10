@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use shaders;
 use define::{self, VertexSlice};
-use camera::{Camera, ArcBall};
+use camera::{Camera, BasicCamera, ArcBall};
 use wavefront::{open_obj};
 use rand::{Rng, ThreadRng, thread_rng};
 
@@ -85,18 +85,12 @@ impl<R: gfx::Resources> Object<R> {
 
 struct PointLight {
     pub base_angle: Deg<f32>,
-    pub block: define::LightBlock,
+    pub color: [f32; 4],
+    pub ambient: [f32; 4],
 }
 
 impl PointLight {
-    pub fn update<R: gfx::Resources, C: gfx::CommandBuffer<R>>(
-        &mut self, 
-        time: f32, 
-        encoder: &mut gfx::Encoder<R, C>, 
-        pbr_data: &mut define::pbr::Data<R>, 
-        shadow_data: &mut define::shadow::Data<R>,
-        model_mat: Matrix4<f32>)
-    {
+    pub fn animate_camera(&self, time: f32) -> BasicCamera<PerspectiveFov<f32>> {
         let theta = self.base_angle + Deg(time * 30.);
 
         let camera = ArcBall {
@@ -105,23 +99,13 @@ impl PointLight {
             phi: Deg((theta + Deg(time * 13.)).sin() * 45.),
             dist: 7.,
             projection: PerspectiveFov {
-                fovy: Deg(30.).into(),
+                fovy: Deg(20.).into(),
                 aspect: 1., 
                 near: 0.1, far: 100.
             },
         };
-        let camera = camera.to_camera();
 
-        self.block.matrix = (camera.get_proj() * camera.get_view()).into();
-        self.block.pos = camera.get_eye().to_vec().extend(1.).into();
-
-        encoder.clear_depth(&shadow_data.depth, camera.projection.far);
-        encoder.update_constant_buffer(&pbr_data.light, &self.block);
-        encoder.update_constant_buffer(&shadow_data.transform, &define::TransformBlock {
-            model: model_mat.into(),
-            view: camera.get_view().into(),
-            proj: camera.get_proj().into(),
-        });
+        camera.to_camera()
     }
 }
 
@@ -403,13 +387,8 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             .map(|i| Deg(i as f32 * 360. / light_count as f32))
             .map(|angle| PointLight {
                 base_angle: angle,
-                block: define::LightBlock {
-                    matrix: Matrix4::identity().into(),
-                    pos: [0.; 4],
-                    ambient: inital_color.1,
-                    color: inital_color.2,
-
-                },
+                ambient: inital_color.1,
+                color: inital_color.2,
             }).collect();
 
         // put it all together
@@ -478,14 +457,13 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
 
         let model_mat = Matrix4::identity();
+        let obj = &self.objects[self.current];
 
         self.encoder.update_constant_buffer(&self.deferred_data.transform, &define::TransformBlock {
             model: model_mat.into(),
             view: camera.get_view().into(),
             proj: camera.get_proj().into(),
         });
-
-        let obj = &self.objects[self.current];
 
         self.encoder.draw(&obj.mesh.1, &self.deferred_pso, &self.deferred_data);
 
@@ -496,9 +474,26 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             time: elapsed as f32,
         });
 
-        for l in &mut self.lights {
-            l.update(elapsed as f32, &mut self.encoder, &mut self.pbr_data, &mut self.shadow_data, model_mat);
+                let lights = self.lights.iter().map(|l| (l.animate_camera(elapsed as f32), &l.color, &l.ambient));
+        for (ref cam, color, ambient) in lights {
+            self.encoder.update_constant_buffer(&self.shadow_data.transform, &define::TransformBlock {
+                model: model_mat.into(),
+                view: cam.get_view().into(),
+                proj: cam.get_proj().into(),
+            });
+            self.encoder.clear_depth(&self.shadow_data.depth, camera.projection.far);
             self.encoder.draw(&obj.mesh.1, &self.shadow_pso, &self.shadow_data);
+
+            self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far); // hack around bug
+                                                                                          // TODO: fix bug
+
+            self.encoder.update_constant_buffer(&self.pbr_data.light, &define::LightBlock {
+                matrix: (cam.get_proj() * cam.get_view()).into(),
+                pos: cam.get_eye().to_vec().extend(1.).into(),
+                color: *color,
+                ambient: *ambient,
+
+            });
             self.encoder.draw(&self.quad.1, &self.pbr_pso, &self.pbr_data);
         }
 
@@ -542,16 +537,16 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                                 .into();
 
                             for l in &mut self.lights {
-                                l.block.ambient = ambient;
-                                l.block.color = vec3(self.rng.next_f32(), self.rng.next_f32(), self.rng.next_f32())
+                                l.ambient = ambient;
+                                l.color = vec3(self.rng.next_f32(), self.rng.next_f32(), self.rng.next_f32())
                                     .normalize()
                                     .extend(350. / count)
                                     .into();
                             }
                         } else {
                             for l in &mut self.lights {
-                                l.block.ambient = init.1;
-                                l.block.color = init.2;
+                                l.ambient = init.1;
+                                l.color = init.2;
                             }
                         }
 
