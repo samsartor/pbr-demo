@@ -27,3 +27,8 @@ shader!(pbr {
             vertex: file("shaders/blit.v.glsl"),
             fragment: file("shaders/pbr.f.glsl")
         });
+
+shader!(ldr {
+            vertex: file("shaders/blit.v.glsl"),
+            fragment: file("shaders/ldr.f.glsl")
+        });

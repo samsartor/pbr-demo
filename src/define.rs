@@ -4,7 +4,7 @@ use gfx;
 
 pub use gfx_app::{ColorFormat, DepthFormat};
 
-pub type GBuffLayerFormat = [f32; 4];
+pub type LayerFormat = [f32; 4];
 pub type PbrTex = [f32; 4];
 pub type VertexSlice<R, V> = (gfx::handle::Buffer<R, V>, gfx::Slice<R>);
 
@@ -60,6 +60,7 @@ gfx_defines!{
 
     constant LiveBlock {
         eye_pos: [f32; 4] = "eye_pos",
+        ambient: [f32; 4] = "ambient",
         gamma: f32 = "gamma",
         exposure: f32 = "exposure",
         time: f32 = "time",
@@ -69,8 +70,8 @@ gfx_defines!{
         verts: gfx::VertexBuffer<Vtnt> = (),
         transform: gfx::ConstantBuffer<TransformBlock> = "transform",
         normal: gfx::TextureSampler<PbrTex> = "normal_tex",
-        layer_a: gfx::RenderTarget<GBuffLayerFormat> = "layer_a",
-        layer_b: gfx::RenderTarget<GBuffLayerFormat> = "layer_b",
+        layer_a: gfx::RenderTarget<LayerFormat> = "layer_a",
+        layer_b: gfx::RenderTarget<LayerFormat> = "layer_b",
         depth: gfx::DepthTarget<DepthFormat> = gfx::preset::depth::LESS_EQUAL_WRITE,
     }
 
@@ -78,11 +79,18 @@ gfx_defines!{
         verts: gfx::VertexBuffer<V> = (),
         live: gfx::ConstantBuffer<LiveBlock> = "live",
         // shadow: gfx::TextureSampler<f32> = "shadow_depth",
-        layer_a: gfx::TextureSampler<GBuffLayerFormat> = "layer_a",
-        layer_b: gfx::TextureSampler<GBuffLayerFormat> = "layer_b",
+        layer_a: gfx::TextureSampler<LayerFormat> = "layer_a",
+        layer_b: gfx::TextureSampler<LayerFormat> = "layer_b",
         albedo: gfx::TextureSampler<PbrTex> = "albedo_tex",
         metalness: gfx::TextureSampler<PbrTex> = "metalness_tex",
         roughness: gfx::TextureSampler<PbrTex> = "roughness_tex",
+        color: gfx::BlendTarget<LayerFormat> = ("f_color", gfx::state::ColorMask::all(), gfx::preset::blend::ADD),
+    }
+
+    pipeline ldr {
+        verts: gfx::VertexBuffer<V> = (),
+        live: gfx::ConstantBuffer<LiveBlock> = "live",
+        value: gfx::TextureSampler<LayerFormat> = "value",
         color: gfx::RenderTarget<ColorFormat> = "f_color",
     }
 }

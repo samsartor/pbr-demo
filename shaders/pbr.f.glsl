@@ -8,6 +8,7 @@ uniform sampler2D roughness_tex;
 
 layout(std140) uniform live {
     vec4 eye_pos;
+    vec4 ambient;
     float gamma;
     float exposure;
     float time;
@@ -20,7 +21,6 @@ out vec4 f_color;
 const float PI = 3.14159265359;
 
 const int LIGHT_COUNT = 5;
-const vec3 ambient = vec3(0.015, 0.015, 0.025) * 1.5;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
@@ -62,11 +62,6 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
-vec3 to_ldr(vec3 lum) {
-    vec3 color = vec3(1.0) - exp(-lum * exposure);
-    return pow(color, vec3(1.0 / gamma)); // Not sure why this over-gammas it
-}
-
 void main() {
     vec4 a = texture(layer_a, v_pos);
     vec4 b = texture(layer_b, v_pos);
@@ -75,8 +70,10 @@ void main() {
     vec3 norm = vec3(a.w, b.xy);
     vec2 tex = b.zw;
 
+    vec3 back = ambient.rgb * ambient.a;
+
     if (dot(norm, norm) < 0.001) {
-        f_color = vec4(to_ldr(ambient), 0);
+        f_color = vec4(back, 0);
         return;
     }
 
@@ -126,8 +123,8 @@ void main() {
     }
 
     // AMBIENT
-    lum += ambient * albedo; // * ao;
+    lum += back * albedo; // * ao;
 
     // OUT
-    f_color = vec4(to_ldr(lum), 1);
+    f_color = vec4(lum, 1);
 } 

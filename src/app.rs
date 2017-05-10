@@ -16,8 +16,6 @@ use define::{self, VertexSlice};
 use camera::{Camera, ArcBall};
 use wavefront::{open_obj};
 
-const AMBIENT: [f32; 4] = [0.03, 0.03, 0.03, 1.];
-
 pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     //=======//
     // Input //
@@ -47,12 +45,14 @@ pub struct App<R: gfx::Resources, C: gfx::CommandBuffer<R>> {
     //===========//
     deferred_pso: gfx::PipelineState<R, define::deferred::Meta>,
     pbr_pso: gfx::PipelineState<R, define::pbr::Meta>,
+    ldr_pso: gfx::PipelineState<R, define::ldr::Meta>,
 
     //===============//
     // Pipeline Data //
     //===============//
     deferred_data: define::deferred::Data<R>,
     pbr_data: define::pbr::Data<R>,
+    ldr_data: define::ldr::Data<R>,
 }
 
 struct Object<R: gfx::Resources> {
@@ -80,7 +80,7 @@ struct ViewPair<R: gfx::Resources, T: gfx::format::Formatted> {
     target: gfx::handle::RenderTargetView<R, T>,
 }
 
-fn build_g_buf<R, C, F, T>(factory: &mut F, w: texture::Size, h: texture::Size) -> ViewPair<R, T>
+fn build_layer<R, C, F, T>(factory: &mut F, w: texture::Size, h: texture::Size) -> ViewPair<R, T>
     where F: gfx_app::Factory<R, CommandBuffer=C>,
           R: gfx::Resources + 'static,
           C: gfx::CommandBuffer<R> + Send + 'static,
@@ -159,8 +159,9 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             }
         }).collect();
 
-        let layer_a = build_g_buf(factory, dim.0, dim.1);
-        let layer_b = build_g_buf(factory, dim.0, dim.1);
+        let layer_a = build_layer(factory, dim.0, dim.1);
+        let layer_b = build_layer(factory, dim.0, dim.1);
+        let value = build_layer(factory, dim.0, dim.1);
 
         let (_, _, depth) = factory.create_depth_stencil(dim.0, dim.1).unwrap();
 
@@ -181,6 +182,16 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
                 gfx::Primitive::TriangleList,
                 gfx::state::Rasterizer::new_fill(),
                 define::pbr::new()
+            ).unwrap()
+        };
+
+        let ldr_pso = {
+            let shaders = shaders::ldr(factory).unwrap();
+            factory.create_pipeline_state(
+                &shaders,
+                gfx::Primitive::TriangleList,
+                gfx::state::Rasterizer::new_fill(),
+                define::ldr::new()
             ).unwrap()
         };
 
@@ -218,6 +229,13 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             albedo: (objects[0].albedo.clone(), sampler.clone()),
             metalness: (objects[0].metalness.clone(), sampler.clone()),
             roughness: (objects[0].roughness.clone(), sampler.clone()),
+            color: value.target.clone(),  
+        };
+
+        let ldr_data = define::ldr::Data {
+            verts: quad.0.clone(),
+            live: pbr_data.live.clone(),
+            value: (value.resource.clone(), gbuf_sampler.clone()),
             color: window_targets.color.clone(),  
         };
 
@@ -248,9 +266,11 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
             deferred_pso: deferred_pso,
             pbr_pso: pbr_pso,
+            ldr_pso: ldr_pso,
 
             deferred_data: deferred_data,
             pbr_data: pbr_data,
+            ldr_data: ldr_data,
         }
     }
 
@@ -272,7 +292,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 * 1e-9f64;
 
         // clear screen
-        self.encoder.clear(&self.pbr_data.color, AMBIENT);
+        self.encoder.clear(&self.pbr_data.color, [0.; 4]);
         self.encoder.clear(&self.deferred_data.layer_a, [0.; 4]);
         self.encoder.clear(&self.deferred_data.layer_b, [0.; 4]);
         self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
@@ -289,12 +309,14 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.encoder.update_constant_buffer(&self.pbr_data.live, &define::LiveBlock {
             eye_pos: camera.get_eye().to_vec().extend(1.).into(),
+            ambient: [0.015, 0.015, 0.025, 1.5],
             exposure: self.exposure,
             gamma: 2.2,
             time: elapsed as f32,
         });
 
         self.encoder.draw(&self.quad.1, &self.pbr_pso, &self.pbr_data);
+        self.encoder.draw(&self.quad.1, &self.ldr_pso, &self.ldr_data);
 
         // send to GPU
         self.encoder.flush(device);
@@ -369,19 +391,21 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
     {
         let (w, h, _, _) = window_targets.color.get_dimensions();
 
-        let layer_a = build_g_buf(factory, w, h);
-        let layer_b = build_g_buf(factory, w, h);
+        let layer_a = build_layer(factory, w, h);
+        let layer_b = build_layer(factory, w, h);
+        let value = build_layer(factory, w, h);
 
         self.deferred_data.layer_a = layer_a.target.clone();
         self.deferred_data.layer_b = layer_b.target.clone();
+        self.pbr_data.color = value.target.clone();
+        self.ldr_data.color = window_targets.color.clone();
 
         let (_, _, depth) = factory.create_depth_stencil(w, h).unwrap();
         self.deferred_data.depth = depth;
 
         self.pbr_data.layer_a.0 = layer_a.resource.clone();
         self.pbr_data.layer_b.0 = layer_b.resource.clone();
-
-        self.pbr_data.color = window_targets.color.clone();
+        self.ldr_data.value.0 = value.resource.clone();
 
         self.cam.projection.aspect = window_targets.aspect_ratio;
     }
