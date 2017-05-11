@@ -51,8 +51,8 @@ Details
  	 	- Render scene to gbuffer
  	 	For each light:
  	 		- Render scene to shadowbuffer
- 	 		- Do deferred pass for single light (additive blending into value buffer)
- 	 	- Do post processing (convert HDR value buffer to LDR output)
+ 	 		- Do deferred pass for single light (additive blending into luminance buffer)
+ 	 	- Do post processing (convert HDR luminance buffer to LDR output)
 
 	Further details are in the paper.
 
@@ -60,9 +60,9 @@ Building
 ========
 
 	If you have Rust installed (https://www.rustup.rs/), execute "cargo run
-	--release" in the project's main directory. Nightly is NOT required, but
-	it is generally better. I have also included linux and windows
-	executables.
+	--release -- -o [objects]" in the project's main directory. Nightly is NOT
+	required, but it is generally better. I have also included linux and
+	windows executables.
 
 Time: ~12h (not including copy-and-pasted code from previous projects)
 Fun: ... (PBR is AWESOME!)

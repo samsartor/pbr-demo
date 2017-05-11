@@ -24,7 +24,7 @@ layout(std140) uniform light {
 };
 
 in vec2 v_pos;
-out vec4 f_color;
+out vec4 f_lum;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
@@ -75,7 +75,7 @@ void main() {
     vec3 back = ambient.rgb * ambient.a;
 
     if (dot(norm, norm) < 0.001) {
-        f_color = vec4(back, 0);
+        f_lum = vec4(back, 0);
         return;
     }
 
@@ -123,5 +123,5 @@ void main() {
     lum += back * albedo; // * ao;
 
     // OUT
-    f_color = vec4(lum, 1);
+    f_lum = vec4(lum, 1);
 } 

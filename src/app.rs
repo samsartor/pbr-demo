@@ -356,13 +356,13 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
             metalness: (objects[0].metalness.clone(), sampler.clone()),
             roughness: (objects[0].roughness.clone(), sampler.clone()),
             shadow: shadow_tex_sampler,
-            color: value.target.clone(),  
+            luminance: value.target.clone(),  
         };
 
         let ldr_data = define::ldr::Data {
             verts: quad.0.clone(),
             live: pbr_data.live.clone(),
-            value: (value.resource.clone(), gbuf_sampler.clone()),
+            luminance: (value.resource.clone(), gbuf_sampler.clone()),
             color: window_targets.color.clone(),  
         };
 
@@ -449,7 +449,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
         let elapsed = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 * 1e-9f64;
 
         // clear screen
-        self.encoder.clear(&self.pbr_data.color, [0.; 4]);
+        self.encoder.clear(&self.pbr_data.luminance, [0.; 4]);
         self.encoder.clear(&self.deferred_data.layer_a, [0.; 4]);
         self.encoder.clear(&self.deferred_data.layer_b, [0.; 4]);
         self.encoder.clear_depth(&self.deferred_data.depth, self.cam.projection.far);
@@ -603,7 +603,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.deferred_data.layer_a = layer_a.target.clone();
         self.deferred_data.layer_b = layer_b.target.clone();
-        self.pbr_data.color = value.target.clone();
+        self.pbr_data.luminance = value.target.clone();
         self.ldr_data.color = window_targets.color.clone();
 
         let (_, _, depth) = factory.create_depth_stencil(w, h).unwrap();
@@ -611,7 +611,7 @@ impl<R, C> ApplicationBase<R, C> for App<R, C> where
 
         self.pbr_data.layer_a.0 = layer_a.resource.clone();
         self.pbr_data.layer_b.0 = layer_b.resource.clone();
-        self.ldr_data.value.0 = value.resource.clone();
+        self.ldr_data.luminance.0 = value.resource.clone();
 
         self.cam.projection.aspect = window_targets.aspect_ratio;
     }

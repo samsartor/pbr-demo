@@ -88,13 +88,13 @@ gfx_defines!{
         metalness: gfx::TextureSampler<PbrTex> = "metalness_tex",
         roughness: gfx::TextureSampler<PbrTex> = "roughness_tex",
         shadow: gfx::TextureSampler<f32> = "shadow_depth",
-        color: gfx::BlendTarget<LayerFormat> = ("f_color", gfx::state::ColorMask::all(), gfx::preset::blend::ADD),
+        luminance: gfx::BlendTarget<LayerFormat> = ("f_lum", gfx::state::ColorMask::all(), gfx::preset::blend::ADD),
     }
 
     pipeline ldr {
         verts: gfx::VertexBuffer<V> = (),
         live: gfx::ConstantBuffer<LiveBlock> = "live",
-        value: gfx::TextureSampler<LayerFormat> = "value",
+        luminance: gfx::TextureSampler<LayerFormat> = "luminance",
         color: gfx::RenderTarget<ColorFormat> = "f_color",
     }
 

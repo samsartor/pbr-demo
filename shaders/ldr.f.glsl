@@ -1,6 +1,6 @@
 #version 410
 
-uniform sampler2D value;
+uniform sampler2D luminance;
 
 layout(std140) uniform live {
     vec4 eye_pos;
@@ -18,6 +18,6 @@ vec3 to_ldr(vec3 lum) {
 }
 
 void main() {
-    f_color = texture(value, v_pos);
+    f_color = texture(luminance, v_pos);
     f_color.xyz = to_ldr(f_color.xyz);
 } 
