@@ -5,7 +5,7 @@ Final Project / Physically Based Rendering
 Description
 ===========
 
-	This program demonstrates BPR shading on a variety of textured models.
+	This program demonstrates PBR shading on a variety of textured models.
 	
 Usage
 =====
