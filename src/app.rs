@@ -159,7 +159,7 @@ fn get_color(mut arg: ::clap::Values) -> Result<[f32; 4], &'static str> {
     ];
 
     if let Some(v) = arg.next() {
-        rgb[3] *= v.parse().map_err(|_| "Second parameter is not a float")?
+        rgb[3] *= v.parse::<f32>().map_err(|_| "Second parameter is not a float")?
     }
 
     Ok(rgb)
